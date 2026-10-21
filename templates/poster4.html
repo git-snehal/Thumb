@@ -1,0 +1,35 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import title_size with context %}
+
+{% block style %}
+body { background: #000; color: #fff; }
+.key { position: absolute; right: 0; top: 0; width: 700px; height: 720px; object-fit: cover; object-position: center 12%; }
+.fade { position: absolute; inset: 0; background: linear-gradient(90deg, #000 0, #000 46%, rgba(0,0,0,.55) 62%, rgba(0,0,0,0) 78%); }
+.nav { position: absolute; left: max(72px, var(--tl-shift, 0px)); top: 40px; display: flex; gap: 30px; align-items: center; font-size: 13px; font-weight: 500; color: rgba(255,255,255,.65); }
+.nav .on { color: #fff; border-bottom: 2px solid var(--accent); padding-bottom: 5px; }
+.col { position: absolute; left: 72px; width: 600px; top: 0; bottom: 0; display: flex; flex-direction: column; justify-content: center; }
+h1 { font-weight: 700; line-height: 1.06; letter-spacing: -.02em; text-transform: uppercase; }
+.box { margin-top: 26px; padding: 16px 20px; background: rgba(255,255,255,.09); border: 1px solid rgba(255,255,255,.14); border-radius: 12px; font-size: 13.5px; line-height: 1.65; color: rgba(255,255,255,.82); }
+.cta { margin-top: 28px; display: flex; align-items: center; gap: 22px; }
+.go { padding: 13px 34px; border-radius: 999px; font-weight: 700; font-size: 14px; background: linear-gradient(90deg, var(--accent), color-mix(in srgb, var(--accent) 45%, #b44cff)); color: var(--accent-fg); }
+.go { text-shadow: 0 1px 2px rgba(0,0,0,.18); }
+.studio { display: flex; align-items: center; gap: 10px; font-size: 13px; font-weight: 500; color: rgba(255,255,255,.85); }
+.studio i { width: 34px; height: 34px; border-radius: 50%; border: 2px solid rgba(255,255,255,.8); display: block; }
+{% endblock %}
+
+{% block body %}
+<img class="key" src="{{ a.art }}">
+<div class="fade"></div>
+<div class="nav">
+  
+  {% for g in a.genres %}<span class="{{ 'on' if loop.first else '' }}">{{ g }}</span>{% endfor %}
+</div>
+<div class="col">
+  <h1 style="font-size:{{ title_size(a.title, 62, 54, 46, 38) }}px">{{ a.title }}</h1>
+  <div class="box"><p class="clamp" style="-webkit-line-clamp:4">{{ a.description|clip(230) }}</p></div>
+  <div class="cta">
+    <span class="go">Watch Now!</span>
+    {% if a.studio %}<span class="studio"><i></i>{{ a.studio }}</span>{% endif %}
+  </div>
+</div>
+{% endblock %}

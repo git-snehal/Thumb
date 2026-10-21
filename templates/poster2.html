@@ -1,0 +1,46 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import stars, play, title_size with context %}
+
+{% block style %}
+body { background: #0a0a12; color: #fff; }
+.bg { position: absolute; inset: -60px; width: calc(100% + 120px); height: calc(100% + 120px); object-fit: cover; filter: blur(34px) brightness(.5) saturate(1.2); }
+.shade { position: absolute; inset: 0; background: linear-gradient(90deg, rgba(8,8,16,.96) 0%, rgba(8,8,16,.84) 42%, rgba(8,8,16,.1) 100%); }
+.key { position: absolute; right: 0; top: 0; width: 640px; height: 720px; object-fit: cover; object-position: center 20%;
+       -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 38%); mask-image: linear-gradient(90deg, transparent 0, #000 38%); }
+.col { position: absolute; left: 72px; top: 0; bottom: 0; width: 600px; display: flex; flex-direction: column; justify-content: center; }
+.meta { font-size: 14px; font-weight: 500; color: color-mix(in srgb, var(--accent) 55%, white); margin-bottom: 14px; }
+h1 { font-weight: 700; line-height: 1.04; letter-spacing: -.02em; text-transform: uppercase; }
+.stars-row { margin: 20px 0 10px; display: flex; align-items: center; gap: 12px; font-weight: 700; font-size: 14px; }
+.genres { display: flex; flex-wrap: wrap; gap: 9px; margin: 0 0 14px; }
+.genres span { padding: 5px 15px; border: 1.5px solid rgba(255,255,255,.42); border-radius: 999px; font-size: 12.5px; font-weight: 500; letter-spacing: .05em; text-transform: uppercase; background: rgba(255,255,255,.06); }
+.desc { font-size: 13.5px; line-height: 1.7; color: rgba(255,255,255,.72); -webkit-line-clamp: 4; max-width: 520px; }
+.eps { display: flex; gap: 14px; margin-top: 34px; }
+.ep { position: relative; width: 168px; height: 95px; border-radius: 12px; overflow: hidden; background: #1c1c28; box-shadow: 0 8px 20px rgba(0,0,0,.45); }
+.ep img { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.ep::after { content: ""; position: absolute; inset: 0; background: rgba(0,0,0,.32); }
+.ep .p { position: absolute; z-index: 2; inset: 0; display: flex; align-items: center; justify-content: center; }
+.ep .p i { width: 34px; height: 34px; border-radius: 50%; background: rgba(255,255,255,.92); color: #111; display: flex; align-items: center; justify-content: center; padding-left: 2px; }
+{% endblock %}
+
+{% block body %}
+<img class="bg" src="{{ a.art }}">
+<div class="shade"></div>
+<img class="key" src="{{ a.art }}">
+
+<div class="col">
+  <div class="meta">{{ [a.format, a.season_line, a.studio]|select|join(' · ') }}</div>
+  <h1 style="font-size:{{ title_size(a.title, 64, 56, 46, 38) }}px">{{ a.title }}</h1>
+  <div class="stars-row">{{ stars(a.star_pct, 18, dim='rgba(255,255,255,.22)') }}{% if a.score10 %}<span>{{ a.score10 }}</span>{% endif %}</div>
+  <div class="genres">{% for g in (a.genres4 or a.genres) %}<span>{{ g }}</span>{% endfor %}</div>
+  <p class="desc">{{ a.description|clip(230) }}</p>
+  <div class="eps">
+    {% for i in range(3) %}
+    {% set src = a.thumbs[i] if a.thumbs|length > i else (a.art if a.art_wide else (a.banner or a.cover)) %}
+    <div class="ep">
+      <img src="{{ src }}" {% if a.thumbs|length <= i %}style="object-position:{{ [10, 50, 90][i] }}% 50%"{% endif %}>
+      <div class="p"><i>{{ play(15) }}</i></div>
+    </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}

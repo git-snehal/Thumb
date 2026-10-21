@@ -1,0 +1,50 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import download, title_size with context %}
+
+{% block style %}
+body { background: #f6f7fb; color: #1a1b22; --ink: color-mix(in srgb, var(--accent) 72%, black); --soft: #9a9eaa; }
+.d1 { position: absolute; right: 30px; top: -70px; width: 140px; height: 140px; border-radius: 50%; background: var(--accent); }
+.d1::after { content: ""; position: absolute; right: 0; top: 0; width: 70px; height: 140px; background: #fff; border-radius: 0 70px 70px 0; }
+.d2 { position: absolute; left: 540px; top: 660px; width: 122px; height: 122px; border-radius: 50%; background: var(--accent); }
+.disc { position: absolute; left: 640px; top: 112px; width: 560px; height: 560px; border-radius: 50%; background: var(--accent); }
+.photo { position: absolute; left: 676px; top: 84px; width: 548px; height: 548px; border-radius: 50%; object-fit: cover; object-position: center 20%;
+         border: 10px solid #f6f7fb; box-shadow: 0 24px 50px color-mix(in srgb, var(--ink) 30%, transparent); }
+.nav { position: absolute; left: max(70px, var(--tl-shift, 0px)); top: 56px; display: flex; gap: 38px; font-size: 14px; color: var(--soft); }
+.nav .on { color: #1a1b22; border-bottom: 2px solid var(--accent); padding-bottom: 4px; }
+.col { position: absolute; left: 70px; top: 150px; width: 520px; }
+.meta { font-size: 17px; color: var(--soft); text-transform: uppercase; letter-spacing: .01em; }
+h1 { margin-top: 18px; font-weight: 700; line-height: 1.12; text-transform: uppercase; }
+h1 span { display: block; }
+h1 .b { color: var(--ink); font-family: inherit; }
+.desc { margin: 30px 0 0; padding-left: 22px; border-left: 3px solid var(--accent); font-size: 13px; line-height: 1.55; letter-spacing: .02em; text-transform: uppercase; color: var(--soft); -webkit-line-clamp: 4; max-width: 400px; }
+.dl { position: absolute; left: 70px; top: 470px; display: flex; align-items: stretch; height: 50px; border: 2px solid var(--accent); border-radius: 14px 25px 25px 14px; overflow: hidden; background: #fff; }
+.dl i { width: 50px; background: var(--accent); color: var(--accent-fg); display: flex; align-items: center; justify-content: center; border-radius: 0 12px 12px 0; margin-right: 28px; }
+.dl b { display: flex; align-items: center; padding-right: 22px; font-size: 16px; font-weight: 700; color: #666a77; letter-spacing: .01em; text-transform: uppercase; }
+.genres { position: absolute; left: 70px; top: 548px; display: flex; flex-wrap: wrap; gap: 10px; width: 520px; }
+.genres span { padding: 6px 16px; border: 2px solid var(--accent); border-radius: 999px; font-size: 12.5px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); background: #fff; }
+.stats { position: absolute; left: 70px; bottom: 58px; display: flex; gap: 62px; }
+.stats small { display: block; font-size: 12px; font-weight: 700; color: var(--ink); text-transform: uppercase; }
+.stats span { display: block; margin-top: 5px; font-size: 12.5px; color: #20212a; text-transform: uppercase; }
+{% endblock %}
+
+{% block body %}
+<div class="d1"></div><div class="d2"></div>
+<div class="disc"></div>
+<img class="photo" src="{{ a.art }}">
+<div class="nav">
+  {% set ongoing = a.status|lower == 'releasing' %}
+  <span>Main</span><span class="{{ 'on' if ongoing }}">Ongoing</span><span class="{{ 'on' if not ongoing }}">Finished</span><span>Network</span>
+</div>
+<div class="col">
+  <div class="meta">{{ [a.format, a.season_line, a.episodes_label]|select|join(' • ') }}</div>
+  <h1 style="font-size:{{ title_size(a.title, 50, 44, 38, 32) }}px"><span>{{ a.title_a }}</span>{% if a.title_b %}<span class="b">{{ a.title_b }}</span>{% endif %}</h1>
+  <p class="desc">{{ a.description|clip(150) }}</p>
+</div>
+<div class="dl"><i>{{ download(22) }}</i><b>Download now</b></div>
+<div class="genres">{% for g in (a.genres4 or a.genres) %}<span>{{ g }}</span>{% endfor %}</div>
+<div class="stats">
+  <div><small>Studio</small><span>{{ a.studio or '—' }}</span></div>
+  <div><small>First aired</small><span>{{ a.season_line or '—' }}</span></div>
+  <div><small>Rating</small><span>{{ (a.score10 ~ '/10 · AniList') if a.score10 else '—' }}</span></div>
+</div>
+{% endblock %}

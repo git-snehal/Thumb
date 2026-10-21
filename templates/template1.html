@@ -1,0 +1,47 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import stars, bookmark, title_size with context %}
+
+{% block style %}
+body { --bg: #ffffff; --fg: #111318; --muted: #7b808a; --line: #e4e6ea; --btn: #111318; --btn-fg: #fff;
+       background: var(--bg); color: var(--fg); display: flex; }
+body.dark { --bg: #101218; --fg: #f4f5f7; --muted: #99a0ab; --line: #2b303a; --btn: #f4f5f7; --btn-fg: #101218; }
+body.mirror { flex-direction: row-reverse; }
+
+.art { position: relative; flex: none; width: 520px; height: 720px; overflow: hidden; background: #000; }
+.art img { object-position: center 18%; }
+
+.content { position: relative; flex: 1; padding: 70px 76px 64px 68px; display: flex; flex-direction: column; justify-content: center; }
+body.mirror .content { padding: 70px 68px 64px 76px; }
+
+.pills { display: flex; gap: 10px; margin-bottom: 26px; }
+.pill { font-size: 12.5px; font-weight: 500; padding: 5px 15px; border: 1.5px solid var(--line); border-radius: 999px; }
+
+h1 { font-weight: 700; line-height: 1.06; letter-spacing: -.02em; text-transform: uppercase; }
+.rating { display: flex; align-items: center; gap: 12px; margin: 26px 0 18px; font-size: 14px; font-weight: 700; }
+.rating small { font-size: 14px; font-weight: 700; }
+.desc { font-size: 14px; line-height: 1.75; color: var(--muted); -webkit-line-clamp: 5; max-width: 560px; }
+.rule { height: 1.5px; background: var(--line); margin: 28px 0 26px; max-width: 560px; }
+.actions { display: flex; gap: 12px; }
+.btn { height: 46px; border-radius: 999px; background: var(--btn); color: var(--btn-fg); display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 14px; letter-spacing: .06em; }
+.btn.main { padding: 0 34px; text-transform: uppercase; }
+.btn.main b { color: var(--accent); font-weight: 700; margin-left: .4em; }
+.btn.sq { width: 46px; }
+{% endblock %}
+
+{% block body %}
+<div class="art"><img class="fill-img" src="{{ a.art }}"></div>
+<div class="content">
+  
+  <div class="pills">{% for g in a.genres %}<span class="pill">{{ g }}</span>{% endfor %}</div>
+  <h1 style="font-size:{{ title_size(a.title, 58, 50, 42, 34) }}px">{{ a.title }}</h1>
+  {% if a.score10 %}
+  <div class="rating"><span>Avg Ratings:</span>{{ stars(a.star_pct, 17) }}<small>{{ a.score10 }}</small></div>
+  {% else %}<div class="rating"></div>{% endif %}
+  <p class="desc">{{ a.description|clip(300) }}</p>
+  <div class="rule"></div>
+  <div class="actions">
+    <div class="btn main">Watch<b>Now</b></div>
+    <div class="btn sq">{{ bookmark(17) }}</div>
+  </div>
+</div>
+{% endblock %}

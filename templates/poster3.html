@@ -1,0 +1,53 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import title_size with context %}
+
+{% block style %}
+body { background: #0c0c10; color: #fff; }
+.key { position: absolute; right: 0; top: 0; width: 800px; height: 720px; object-fit: cover; object-position: center 15%; }
+.shade { position: absolute; inset: 0; background: linear-gradient(90deg, #0c0c10 0, #0c0c10 36%, rgba(12,12,16,.7) 58%, rgba(12,12,16,0) 80%); }
+.top { position: absolute; left: max(72px, var(--tl-shift, 0px)); top: 44px; font-size: 12.5px; font-weight: 500; color: rgba(255,255,255,.7); display: flex; gap: 14px; align-items: center; }
+.col { position: absolute; left: 72px; top: 92px; width: 540px; }
+h1 { font-weight: 700; line-height: 1.05; letter-spacing: -.02em; }
+.hl { width: 56px; height: 3px; background: var(--accent); margin: 20px 0 18px; border-radius: 2px; }
+.desc { font-size: 13.5px; line-height: 1.7; color: rgba(255,255,255,.7); -webkit-line-clamp: 4; }
+.btns { display: flex; gap: 12px; margin-top: 26px; }
+.b { padding: 12px 26px; border-radius: 6px; font-size: 13px; font-weight: 700; background: rgba(255,255,255,.14); border: 1px solid rgba(255,255,255,.25); }
+.b.hot { background: #fff; color: #111; border-color: #fff; }
+.cast { display: flex; gap: 18px; margin-top: 44px; margin-left: -8px; }
+.c { display: flex; flex-direction: column; align-items: center; width: 150px; text-align: center; }
+.c img { width: 64px; height: 64px; border-radius: 50%; object-fit: cover; border: 2px solid rgba(255,255,255,.85); background: #222; }
+.c b { font-size: 12px; font-weight: 500; margin-top: 9px; line-height: 1.25; -webkit-line-clamp: 2; }
+.c span { font-size: 10.5px; display: block; color: rgba(255,255,255,.55); margin-top: 2px; line-height: 1.2; }
+.bar { position: absolute; right: var(--br-shift, 0px); bottom: 0; width: 760px; display: flex; background: color-mix(in srgb, var(--accent) 88%, black); color: var(--accent-fg); }
+.bar div { flex: 1; padding: 16px 22px; border-left: 1px solid rgba(255,255,255,.22); }
+.bar div:first-child { border-left: 0; }
+.bar small { display: block; font-size: 10.5px; font-weight: 500; opacity: .75; }
+.bar b { display: block; font-size: 14px; font-weight: 700; margin-top: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+{% endblock %}
+
+{% block body %}
+<img class="key" src="{{ a.art }}">
+<div class="shade"></div>
+<div class="top"><span>{{ a.genres|join(' / ') }}</span></div>
+<div class="col">
+  <h1 style="font-size:{{ title_size(a.title, 62, 54, 44, 36) }}px">{{ a.title }}</h1>
+  <div class="hl"></div>
+  <p class="desc">{{ a.description|clip(240) }}</p>
+  <div class="btns"><span class="b hot">Download</span><span class="b">More Info</span></div>
+<div class="cast">
+  {% for c in a.characters[:3] %}
+  <div class="c">
+    {% if c.image %}<img src="{{ c.image }}">{% else %}<img src="{{ a.cover }}">{% endif %}
+    <b class="clamp">{{ c.name }}</b>
+    {% if c.va_name %}<span>{{ c.va_name|clip(20) }} (voice)</span>{% endif %}
+  </div>
+  {% endfor %}
+</div>
+</div>
+<div class="bar">
+  <div><small>Rating</small><b>{{ a.score10 or '—' }} / 10</b></div>
+  <div><small>Studio</small><b>{{ a.studio or '—' }}</b></div>
+  <div><small>Season</small><b>{{ a.season_line or '—' }}</b></div>
+  <div><small>Episodes</small><b>{{ (a.episodes_label|replace(' episodes', '')|replace(' Episodes', '')) or '?' }}</b></div>
+</div>
+{% endblock %}

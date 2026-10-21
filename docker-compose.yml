@@ -1,0 +1,23 @@
+services:
+  bot:
+    build: .
+    image: anime-thumb-bot:latest
+    container_name: anime-thumb-bot
+    restart: unless-stopped          # also starts again after a server reboot
+    init: true
+    env_file: .env                   # BOT_TOKEN and the other settings live here (copy .env.example to .env)
+    shm_size: "1gb"                  # Chromium needs more than Docker's 64 MB default
+    stop_grace_period: 20s
+    security_opt:
+      - no-new-privileges:true
+    # mem_limit: 2g                  # uncomment to cap memory on a small server
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+    volumes:
+      - botdata:/app/data            # saved brands, logos, characters, titles, AI model: survives rebuilds
+
+volumes:
+  botdata:

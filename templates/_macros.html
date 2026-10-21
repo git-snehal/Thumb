@@ -1,0 +1,37 @@
+{# Shared bits. Everything is inline SVG so rendering never depends on symbol fonts. #}
+
+{% macro star5(size) -%}
+<svg viewBox="0 0 100 20" style="width:{{ size * 5 }}px;height:{{ size }}px;display:block;flex:none">
+  {%- for i in range(5) %}<polygon transform="translate({{ i * 20 }} 0)" points="10,1 12.6,7.2 19.4,7.8 14.3,12.3 15.8,19 10,15.5 4.2,19 5.7,12.3 0.6,7.8 7.4,7.2"/>{% endfor -%}
+</svg>
+{%- endmacro %}
+
+{# Partially filled star rating. `pct` is 0-100 and maps directly onto the fill. #}
+{% macro stars(pct, size=18, dim='rgba(128,128,128,.38)', fill='#f5b301') -%}
+<span class="stars" style="position:relative;display:inline-block;width:{{ size * 5 }}px;height:{{ size }}px">
+  <span style="position:absolute;inset:0;fill:{{ dim }}">{{ star5(size) }}</span>
+  <span style="position:absolute;left:0;top:0;height:100%;width:{{ pct }}%;overflow:hidden;fill:{{ fill }}">{{ star5(size) }}</span>
+</span>
+{%- endmacro %}
+
+{% macro play(size=18) -%}
+<svg viewBox="0 0 24 24" width="{{ size }}" height="{{ size }}" fill="currentColor"><path d="M8 5.5v13a1 1 0 0 0 1.5.86l10.4-6.5a1 1 0 0 0 0-1.72L9.5 4.64A1 1 0 0 0 8 5.5z"/></svg>
+{%- endmacro %}
+
+{% macro bookmark(size=18) -%}
+<svg viewBox="0 0 24 24" width="{{ size }}" height="{{ size }}" fill="currentColor"><path d="M6 3h12a1 1 0 0 1 1 1v17l-7-4.2L5 21V4a1 1 0 0 1 1-1z"/></svg>
+{%- endmacro %}
+
+{% macro arrow(size=18) -%}
+<svg viewBox="0 0 24 24" width="{{ size }}" height="{{ size }}" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg>
+{%- endmacro %}
+
+{% macro download(size=18) -%}
+<svg viewBox="0 0 24 24" width="{{ size }}" height="{{ size }}" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M12 4v11M7 10.5l5 5 5-5M5 20h14"/></svg>
+{%- endmacro %}
+
+{# Title size steps down with length, then is scaled for the chosen font (needs `with context`). #}
+{% macro title_size(title, big=60, mid=52, small=44, tiny=36) -%}
+{%- set n = title|length -%}
+{{ ((big if n <= 18 else mid if n <= 28 else small if n <= 44 else tiny) * fscale)|round|int }}
+{%- endmacro %}

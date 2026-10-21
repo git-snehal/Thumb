@@ -1,0 +1,46 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import stars, arrow, title_size with context %}
+
+{% block style %}
+body { background: #fff; color: #17203a; --tint: color-mix(in srgb, var(--accent) 16%, white); --tint2: color-mix(in srgb, var(--accent) 34%, white); --ink: color-mix(in srgb, var(--accent) 35%, #0d1430); }
+.wash { position: absolute; inset: 0; background: linear-gradient(115deg, #fff 0 38%, var(--tint) 38% 100%); }
+.disc { position: absolute; right: -90px; top: 40px; width: 700px; height: 700px; border-radius: 50%; background: var(--tint2); }
+.lines { position: absolute; left: -90px; top: 70px; width: 230px; height: 230px; border-radius: 50%;
+         background: repeating-linear-gradient(0deg, var(--tint2) 0 3px, transparent 3px 14px); opacity: .8; }
+.card { position: absolute; right: 120px; top: 70px; width: 410px; height: 590px; border-radius: 200px 200px 28px 28px; overflow: hidden; box-shadow: 0 30px 60px color-mix(in srgb, var(--ink) 28%, transparent); background: #fff; }
+.card img { width: 100%; height: 100%; object-fit: cover; object-position: center 15%; }
+.nav { position: absolute; left: max(72px, var(--tl-shift, 0px)); top: 40px; display: flex; gap: 8px; align-items: center; font-size: 13px; font-weight: 500; }
+.nav span { padding: 6px 14px; border-radius: 6px; }
+.nav .on { background: var(--accent); color: var(--accent-fg); font-weight: 700; }
+.col { position: absolute; left: 72px; top: 0; bottom: 0; width: 560px; display: flex; flex-direction: column; justify-content: center; }
+.score { display: flex; align-items: center; gap: 12px; font-size: 13px; font-weight: 700; color: var(--ink); margin-bottom: 16px; }
+h1 { font-weight: 700; line-height: 1.06; letter-spacing: -.02em; color: #0d1430; }
+.genres { display: flex; flex-wrap: wrap; gap: 9px; margin-top: 16px; }
+.genres span { padding: 5px 15px; border: 1.5px solid color-mix(in srgb, var(--accent) 60%, #0d1430); border-radius: 999px; font-size: 12px; font-weight: 700; letter-spacing: .04em; text-transform: uppercase; color: var(--ink); background: rgba(255,255,255,.55); }
+.desc { margin-top: 20px; font-size: 14px; line-height: 1.75; color: #4a5473; max-width: 470px; -webkit-line-clamp: 4; }
+.cta { display: flex; gap: 12px; margin-top: 30px; }
+.w { padding: 14px 34px; border-radius: 6px; background: var(--accent); color: var(--accent-fg); font-weight: 700; font-size: 14px; }
+.ar { width: 50px; height: 50px; border-radius: 6px; background: color-mix(in srgb, var(--accent) 85%, white); color: var(--accent-fg); display: flex; align-items: center; justify-content: center; }
+.dots { display: flex; gap: 10px; margin-top: 34px; }
+.dots i { width: 11px; height: 11px; border-radius: 50%; background: var(--tint2); display: block; }
+.dots i:first-child { background: var(--accent); }
+{% endblock %}
+
+{% block body %}
+<div class="wash"></div>
+<div class="lines"></div>
+<div class="disc"></div>
+<div class="card"><img src="{{ a.art }}"></div>
+<div class="nav">
+  
+  <span>Episode</span><span>Trailer</span><span class="on">Home</span><span>Details &amp; more</span>
+</div>
+<div class="col">
+  {% if a.score10 %}<div class="score">{{ stars(a.star_pct, 16, dim='rgba(0,0,0,.14)') }}<span>{{ a.score10 }}/10</span></div>{% endif %}
+  <h1 style="font-size:{{ title_size(a.title, 58, 50, 42, 34) }}px">{{ a.title }}</h1>
+  <div class="genres">{% for g in (a.genres4 or a.genres) %}<span>{{ g }}</span>{% endfor %}</div>
+  <p class="desc">{{ a.description|clip(220) }}</p>
+  <div class="cta"><span class="w">Watch Now</span><span class="ar">{{ arrow(20) }}</span></div>
+  <div class="dots"><i></i><i></i><i></i></div>
+</div>
+{% endblock %}
