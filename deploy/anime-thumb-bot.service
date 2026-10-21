@@ -1,0 +1,31 @@
+[Unit]
+Description=Anime Thumb Bot (Telegram)
+After=network-online.target
+Wants=network-online.target
+StartLimitIntervalSec=300
+StartLimitBurst=10
+
+[Service]
+Type=simple
+User=animebot
+Group=animebot
+WorkingDirectory=/opt/anime-thumb-bot
+EnvironmentFile=/opt/anime-thumb-bot/.env
+Environment=PYTHONUNBUFFERED=1
+Environment=PLAYWRIGHT_BROWSERS_PATH=/opt/anime-thumb-bot/browsers
+Environment=U2NET_HOME=/opt/anime-thumb-bot/data/rembg
+ExecStart=/opt/anime-thumb-bot/venv/bin/python -m bot
+Restart=always
+RestartSec=5
+TimeoutStopSec=30
+# MemoryMax=2G
+
+# hardening: the bot only needs to write inside its own data folder
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+ProtectHome=true
+ReadWritePaths=/opt/anime-thumb-bot/data
+
+[Install]
+WantedBy=multi-user.target
