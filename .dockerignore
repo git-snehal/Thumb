@@ -1,0 +1,12 @@
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+data/
+preview/
+tests/
+__pycache__/
+*.pyc
+*.zip
+*.ipynb
