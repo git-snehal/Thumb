@@ -96,7 +96,7 @@ All of them go in `.env` (see `.env.example` for the full list with comments).
 | `RATE_LIMIT_PER_MIN` | Protects the server when the bot is public. Normal render = 1 point, HD file = 2, Preview all = 3. Default 20 |
 | `RENDER_CONCURRENCY` | Banners rendered at once. **Each needs ~300-500 MB RAM.** 1 on a 1 GB server, 2 on 2-4 GB |
 | `AUTO_CUTOUT` | AI background removal for uploaded characters. Needs ~1 GB extra RAM while it runs; `false` turns it off (plain white backgrounds are still removed) |
-| `TMDB_API_KEY` | HD backdrops (free key from themoviedb.org) |
+| `TMDB_API_KEY` | HD backdrops **and a backup search when AniList is down or doesn't have a title** (free key from themoviedb.org) |
 | `LOG_LEVEL` | `INFO` normally, `DEBUG` when hunting a problem |
 
 After editing `.env`: `docker compose up -d` (Docker) or `sudo systemctl restart anime-thumb-bot` (systemd).

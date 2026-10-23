@@ -55,12 +55,33 @@ MEDIA = {
 }
 
 
+STATE = {"anilist": "ok", "anilist_calls": 0}      # "ok" | "down" | "empty" | "many"
+
+TV111 = {"id": 111, "name": "Alya Sometimes Hides Her Feelings in Russian", "original_name": "Alya-san", "overview": "A transfer student ...",
+         "genres": [{"id": 16, "name": "Animation"}, {"id": 35, "name": "Comedy"}, {"id": 10749, "name": "Romance"}, {"id": 18, "name": "Drama"}],
+         "vote_average": 7.9, "first_air_date": "2024-07-01", "number_of_episodes": 12, "number_of_seasons": 1, "status": "Ended",
+         "production_companies": [{"name": "Doga Kobo"}], "networks": [{"name": "TBS"}], "poster_path": "/p111.jpg", "backdrop_path": "/b111.jpg",
+         "credits": {"cast": [{"name": "Sayumi Watabe", "character": "Alisa Mikhailovna Kujou", "profile_path": "/c1.jpg"},
+                              {"name": "Yoshitaka Yamaya", "character": "Masachika Kuze", "profile_path": None}]}}
+MOVIE222 = {"id": 222, "title": "Movie Only On TMDB", "original_title": "Movie Only On TMDB", "overview": "A film AniList doesn't have.",
+            "genres": [{"id": 16, "name": "Animation"}, {"id": 14, "name": "Fantasy"}], "vote_average": 8.1, "release_date": "2023-03-01",
+            "runtime": 104, "production_companies": [{"name": "Studio X"}], "poster_path": "/m222.jpg", "backdrop_path": "/mb222.jpg",
+            "credits": {"cast": []}}
+
+
 def fake_web(request: httpx.Request) -> httpx.Response:
     if request.url.host == "graphql.anilist.co":
+        STATE["anilist_calls"] += 1
+        if STATE["anilist"] == "down":
+            return httpx.Response(503, json={})
         q = json.loads(request.content)["query"]
         if "Page(" in q:
-            return httpx.Response(200, json={"data": {"Page": {"media": [
-                {"id": 163134, "title": MEDIA["title"], "seasonYear": 2024, "format": "TV"}]}}})
+            if STATE["anilist"] == "empty":
+                return httpx.Response(200, json={"data": {"Page": {"media": []}}})
+            hits = [{"id": 163134, "title": MEDIA["title"], "seasonYear": 2024, "format": "TV"}]
+            if STATE["anilist"] == "many":
+                hits.append({"id": 999, "title": {"romaji": "Alya Other", "english": "Alya, The Other One", "native": "x"}, "seasonYear": 2019, "format": "TV"})
+            return httpx.Response(200, json={"data": {"Page": {"media": hits}}})
         return httpx.Response(200, json={"data": {"Media": MEDIA}})
     if request.url.host == "api.themoviedb.org":
         path, q = request.url.path, request.url.params
@@ -68,10 +89,16 @@ def fake_web(request: httpx.Request) -> httpx.Response:
             if "Totally Different" in q.get("query", ""):
                 return httpx.Response(200, json={"results": [{"id": 5, "name": "Naruto", "first_air_date": "2002-10-03", "genre_ids": [16]}]})
             return httpx.Response(200, json={"results": [
-                {"id": 99, "name": "Some Other Show", "first_air_date": "2010-01-01", "genre_ids": [18]},
-                {"id": 111, "name": "Alya Sometimes Hides Her Feelings in Russian", "first_air_date": "2024-07-01", "genre_ids": [16, 35]}]})
+                {"id": 99, "name": "Some Other Show", "first_air_date": "2010-01-01", "genre_ids": [18], "poster_path": "/p99.jpg"},
+                {"id": 111, "name": "Alya Sometimes Hides Her Feelings in Russian", "first_air_date": "2024-07-01", "genre_ids": [16, 35], "poster_path": "/p111.jpg"}]})
         if path == "/3/search/movie":
+            if "Movie Only" in q.get("query", ""):
+                return httpx.Response(200, json={"results": [{"id": 222, "title": "Movie Only On TMDB", "release_date": "2023-03-01", "genre_ids": [16, 14], "poster_path": "/m222.jpg"}]})
             return httpx.Response(200, json={"results": []})
+        if path == "/3/tv/111":
+            return httpx.Response(200, json=TV111)
+        if path == "/3/movie/222":
+            return httpx.Response(200, json=MOVIE222)
         if path == "/3/tv/111/images":
             return httpx.Response(200, json={"backdrops": [
                 {"file_path": "/third.jpg", "width": 1920, "iso_639_1": "en", "vote_average": 9},
@@ -171,8 +198,8 @@ async def main():
     assert "go" in datas(final.reply_markup) and "help" in datas(final.reply_markup)
     asyncio.sleep = st_sleep
 
-    # 2) /anime -> banner
-    await send("/poster alya")       # /anime and /thumb still work as aliases
+    # 2) /poster -> banner
+    await send("/poster alya")
     photo = next(c for c in session.calls if type(c).__name__ == "SendPhoto")
     d = datas(photo.reply_markup)
     print("banner buttons:", len(d), "| styled:", photo.reply_markup.inline_keyboard[0][0].text)
@@ -316,13 +343,13 @@ async def main():
 
     # 11) animated icons are used when configured, and fall back if Telegram refuses them
     icons.configure({"template": "111", "customize": "222"})
-    await send("/anime alya")
+    await send("/poster alya")
     photo = next(c for c in session.calls if type(c).__name__ == "SendPhoto")
     assert any(b.icon_custom_emoji_id == "111" for row in photo.reply_markup.inline_keyboard for b in row)
     print("icons attached OK")
     session.reject_icons = True
     n_before = len(session.calls)
-    await send("/anime alya")
+    await send("/poster alya")
     photo = next(c for c in session.calls if type(c).__name__ == "SendPhoto")
     assert not any(b.icon_custom_emoji_id for row in photo.reply_markup.inline_keyboard for b in row)
     assert not icons.any_configured(), "icons should be disabled after a rejection"
@@ -346,7 +373,7 @@ async def main():
 
     # 13) /version tells which copy answered; the stale-instance matcher
     await send("/version")
-    assert "v2.0" in session.calls[0].text and "process" in session.calls[0].text
+    assert "v2.1" in session.calls[0].text and "process" in session.calls[0].text
     assert instance.is_bot_cmdline(["/usr/bin/python3", "-m", "bot"]) and not instance.is_bot_cmdline(["python", "app.py"])
     await send("/help")
     assert "/poster" in session.calls[0].text and "/anime &lt;" not in session.calls[0].text and "/anime id" not in session.calls[0].text
@@ -666,6 +693,105 @@ async def main():
     await AllowListMiddleware(frozenset(), frozenset())(handler, m, {})      # empty list = open to everyone
     assert reached == [1, 9, 2]
     print("allow-list OK")
+
+    # 26) TMDB as a second source of titles (AniList down, or the title isn't on AniList)
+    from bot.anilist import parse_query as _pq
+    from bot.ids import decode_tmdb, encode_tmdb
+    from bot.search import explain
+    assert decode_tmdb(encode_tmdb("tv", 111)) == ("tv", 111) and decode_tmdb(encode_tmdb("movie", 222)) == ("movie", 222)
+    assert encode_tmdb("tv", 111) < 0 and encode_tmdb("movie", 111) < 0 and decode_tmdb(163134) is None
+    assert encode_tmdb("tv", 111) != encode_tmdb("movie", 111), "a TV id and a movie id with the same number don't collide"
+    assert _pq("https://www.themoviedb.org/tv/111-alya")[1] == encode_tmdb("tv", 111) and _pq("tmdb:movie/222")[1] == encode_tmdb("movie", 222)
+    assert _pq("https://anilist.co/anime/163134")[1] == 163134
+
+    hits = await tm.search("Alya Sometimes Hides Her Feelings in Russian")
+    assert hits[0].id == encode_tmdb("tv", 111) and hits[0].source == "tmdb" and "TV" in hits[0].label, hits
+    assert [h.id for h in hits][0] != encode_tmdb("tv", 99), "animation ranks above the live-action show"
+    d = await tm.media(encode_tmdb("tv", 111))
+    assert (d["title"], d["genres"], d["studio"], d["score10"], d["episodes_label"], d["season_line"]) == (
+        "Alya Sometimes Hides Her Feelings in Russian", ["Animation", "Comedy", "Romance"], "Doga Kobo", 7.9, "12 episodes", "2024"), d
+    assert d["genres4"][3] == "Drama" and d["status"] == "Finished" and d["tmdb_ref"] == ("tv", 111) and d["star_pct"] == 79.0
+    assert d["characters"][0]["va_name"] == "Sayumi Watabe" and d["cover_url"].endswith("/w780/p111.jpg") and d["banner_url"].endswith("/w1280/b111.jpg")
+    mv = await tm.media(encode_tmdb("movie", 222))
+    assert (mv["format"], mv["episodes_label"], mv["season_line"]) == ("Movie", "104 min", "2023")
+
+    tid = encode_tmdb("tv", 111)
+    td = await app.cache.get(tid)
+    assert td["source"] == "tmdb" and td["accent"] != "#7c5cff" and td["cover"].startswith("data:image") and "needs_accent" not in td
+    assert td["tmdb_urls"] == ["/best.jpg", "/second.jpg", "/third.jpg"], "backdrops come straight from the known TMDB id (no search)"
+    for spec in app.templates:                                   # every design can render a title that came from TMDB
+        if spec.special:
+            continue
+        _, img = await app.render(tid, spec, 42)
+        assert img[:3] == b"\xff\xd8\xff", spec.key
+    await app.store.set_art_idx(42, tid, -1)
+    assert (await app.art_label(42, td))[0] == "TMDB poster"
+    await app.store.set_art_idx(42, tid, 0)
+    print("tmdb titles OK:", td["title"], td["accent"])
+
+    # AniList DOWN -> /poster searches TMDB; the second search doesn't wait on AniList again (circuit breaker)
+    STATE.update(anilist="down", anilist_calls=0); app.anilist._down_until = 0
+    await send("/poster Alya Sometimes Hides Her Feelings in Russian")
+    msgs = [c.text for c in session.calls if type(c).__name__ == "SendMessage"]
+    assert any("AniList isn't responding" in (t or "") for t in msgs) and "SendPhoto" in session.names(), session.names()
+    assert STATE["anilist_calls"] == 2, "two quick attempts, then give up"
+    calls_before = STATE["anilist_calls"]
+    await send("/poster Alya Sometimes Hides Her Feelings in Russian")
+    assert STATE["anilist_calls"] == calls_before and "SendPhoto" in session.names(), "AniList is skipped while it is down"
+
+    # the last good copy keeps working while AniList is down (switching templates etc.)
+    app.cache._data.pop(163134, None)
+    STATE["anilist"] = "ok"; app.anilist._down_until = 0
+    fresh = await app.cache.get(163134)
+    app.cache.ttl = 0                                            # everything counts as expired
+    STATE["anilist"] = "down"; app.anilist._down_until = 0
+    assert (await app.cache.get(163134))["title"] == fresh["title"], "expired copy is served when the refresh fails"
+    app.cache.ttl = 60
+    app.cache._data.pop(163134, None)
+
+    # AniList down AND no TMDB key -> a friendly message, no crash
+    real_tmdb = app.cache.tmdb
+    app.cache.tmdb = TMDB(http, "")
+    app.anilist._down_until = 0
+    await send("/poster Something Completely New")
+    assert "SendPhoto" not in session.names() and any("AniList isn't responding" in (c.text or "") for c in session.calls
+                                                       if type(c).__name__ == "SendMessage")
+    app.cache.tmdb = real_tmdb
+    assert "AniList isn't responding" in explain(__import__("bot.anilist", fromlist=["AniListError"]).AniListError("AniList unreachable: x"))
+
+    # AniList is fine but doesn't know the title -> TMDB
+    STATE["anilist"] = "empty"; app.anilist._down_until = 0
+    await send("/poster Movie Only On TMDB")
+    msgs = [c.text for c in session.calls if type(c).__name__ == "SendMessage"]
+    assert any("couldn't find that on AniList" in (t or "") for t in msgs) and "SendPhoto" in session.names(), msgs
+    photo = next(c for c in session.calls if type(c).__name__ == "SendPhoto")
+    assert "Movie Only On TMDB" in photo.caption and any(d_.startswith(f"t:42:{encode_tmdb('movie', 222)}:") for d_ in datas(photo.reply_markup))
+
+    # several AniList hits: "Not here? Search TMDB" runs the same search on TMDB
+    STATE["anilist"] = "many"
+    await send("/poster alya")
+    picker = next(c for c in session.calls if type(c).__name__ == "SendMessage" and c.reply_markup)
+    kb = datas(picker.reply_markup)
+    assert "tq:42" in kb and "p:42:163134" in kb and "p:42:999" in kb, kb
+    await tap("tq:42")
+    edited = next(c for c in session.calls if type(c).__name__ == "EditMessageText")
+    tmdb_kb = datas(edited.reply_markup)
+    assert "TMDB" in edited.text and tmdb_kb[0] == f"p:42:{encode_tmdb('tv', 111)}", tmdb_kb
+    await tap(tmdb_kb[0])
+    assert "SendPhoto" in session.names(), "picking a TMDB result builds the banner"
+    STATE["anilist"] = "ok"; app.anilist._down_until = 0
+    print("search fallback OK")
+
+    # 27) only /poster works: the old /anime and /thumb commands are gone
+    for old in ("/anime alya", "/thumb alya", "/anime"):
+        await send(old)
+        assert session.calls == [], f"{old} must not do anything any more"
+    await send("/poster alya")
+    assert session.calls, "/poster still works"
+    from bot.handlers import router as _r
+    assert not any(("anime" in (getattr(f.callback, "commands", ()) or ())) or ("thumb" in (getattr(f.callback, "commands", ()) or ()))
+                   for h in _r.message.handlers for f in h.filters), "no handler is registered for the old names"
+    print("only /poster OK")
 
     await renderer.close()
     await http.aclose()

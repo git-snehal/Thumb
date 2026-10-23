@@ -57,7 +57,8 @@ SPECIAL_DEFAULTS = True
 SPECIAL_WATERMARK_OPACITY = 0.11   # how faded the big background watermark is (0 to 1)
 SPECIAL_BOXES_OPACITY = 1.0        # the five side boxes: 1 = pure white, lower = softer
 
-# Optional: high-definition landscape artwork from TMDB (themoviedb.org) for the full-bleed designs.
+# Optional: TMDB (themoviedb.org). Gives high-definition landscape artwork for the full-bleed designs AND acts as a
+# backup search: if AniList is down or doesn't have a title, /poster finds it on TMDB instead.
 # Free key: themoviedb.org -> your profile -> Settings -> API. Paste the "API Key" (or the long "API Read
 # Access Token"). Leave "" to use AniList art only. Customers can also upload their own image per anime.
 TMDB_API_KEY = ""

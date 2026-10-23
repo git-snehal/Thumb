@@ -6,7 +6,7 @@ brand text or logo, pick a corner, and choose a font.
 
 ```
 /start                      animated start message
-/poster Solo Leveling       banner + template buttons   (/anime and /thumb still work)
+/poster Solo Leveling       banner + template buttons
 /poster id:163134           by AniList id
 /poster https://anilist.co/anime/163134
 /settings                   brand text, logo (PNG), their corners, and font
@@ -15,6 +15,12 @@ brand text or logo, pick a corner, and choose a font.
 
 ## Features
 
+* **TMDB as a backup source:** if AniList is down, errors, or simply doesn't have a title, `/poster` searches TMDB
+  instead and builds the poster from TMDB's data (title, synopsis, genres, score, studio, cast, poster and backdrops;
+  the accent colour is taken from the poster). Under AniList results a **Not here? Search TMDB** button runs the same
+  search on TMDB, and you can paste a themoviedb.org link or `tmdb:tv/1399` / `tmdb:movie/603`. Needs `TMDB_API_KEY`.
+  AniList is skipped for 45 seconds after it fails (so nobody waits on a dead service), and a title already opened
+  keeps working from its last good copy during an outage.
 * **Preview all designs**: one numbered picture of the same anime in every design; tap a number and that picture
   turns into the banner.
 * **HD file**: a sharper 2560x1440 PNG (built from TMDB's full-size art when available), next to the normal file.
