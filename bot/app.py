@@ -43,6 +43,10 @@ class App:
     store: Store
     limiter: RateLimiter = field(default_factory=RateLimiter)
 
+    @property
+    def tmdb(self):
+        return self.cache.tmdb
+
     def spec(self, key: str) -> TemplateSpec | None:
         return next((t for t in self.templates if t.key == key), None)
 
@@ -80,13 +84,15 @@ class App:
         """(what is being used, has custom image, number of TMDB images) for the Background panel."""
         choice = await self.store.get_art(uid, anime["id"])
         n = len(anime.get("tmdb_urls") or [])
+        src = "TMDB" if anime.get("source") == "tmdb" else "AniList"
+        cover_word, banner_word = ("poster", "backdrop") if src == "TMDB" else ("cover", "banner")
         if choice["path"]:
             return "your image", True, n
         if n and choice["idx"] >= 0:
             return f"TMDB image {choice['idx'] % n + 1} of {n}", False, n
         if choice["idx"] == -2 and anime.get("banner"):
-            return "AniList banner", False, n
-        return "AniList cover", False, n
+            return f"{src} {banner_word}", False, n
+        return f"{src} {cover_word}", False, n
 
     async def next_images(self, uid: int, anime: dict) -> list[str]:
         """Two DIFFERENT pictures for the 'Next' cards of the special design: the TMDB backdrops after the chosen

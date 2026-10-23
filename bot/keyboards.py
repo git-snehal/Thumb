@@ -20,10 +20,11 @@ def btn(label: str, data: str, slot: str | None = None, emoji: str = "", style: 
 
 
 # ---- anime search picker --------------------------------------------------
-def picker_kb(uid: int, hits: list[SearchHit]) -> InlineKeyboardMarkup:
-    return InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text=h.label, callback_data=f"p:{uid}:{h.id}")] for h in hits
-    ])
+def picker_kb(uid: int, hits: list[SearchHit], offer_tmdb: bool = False) -> InlineKeyboardMarkup:
+    rows = [[InlineKeyboardButton(text=h.label, callback_data=f"p:{uid}:{h.id}")] for h in hits]
+    if offer_tmdb:                         # none of these right? the same search on TMDB
+        rows.append([btn("Not here? Search TMDB", f"tq:{uid}", None, "🔎")])
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # ---- banner ---------------------------------------------------------------
@@ -145,15 +146,15 @@ def panel_kb(uid: int, mid: int, key: str, standalone: bool) -> InlineKeyboardMa
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def bg_text(label: str, has_custom: bool, n_tmdb: int, special: bool = False) -> str:
+def bg_text(label: str, has_custom: bool, n_tmdb: int, special: bool = False, src: str = "AniList") -> str:
     if special:
-        title, tip = "next-card images", ("tap Next images for other HD scenes, or AniList to use AniList pictures instead."
-                                          if n_tmdb else "these come from AniList (add a TMDB key for HD scenes).")
+        title, tip = "next-card images", (f"tap Next images for other HD scenes, or {src} to use its own pictures instead."
+                                          if n_tmdb else f"these come from {src} (add a TMDB key for HD scenes).")
     else:
         title = "background image"
         tip = ("send a new image to replace it, or remove it to go back to the automatic art." if has_custom else
-               "tap Next image to flip through HD art, AniList to use AniList's own picture, or upload your own."
-               if n_tmdb else "tap AniList to switch between its cover and banner, or upload your own image (wide 16:9 looks best).")
+               f"tap Next image to flip through HD art, {src} to use its own picture, or upload your own."
+               if n_tmdb else f"tap {src} to switch between its cover and banner, or upload your own image (wide 16:9 looks best).")
     return (
         f"<b>🌄 {sc(title)}</b>\n\n"
         f"<blockquote>• <b>{sc('using')}:</b> {esc(label)}</blockquote>\n"
@@ -161,7 +162,8 @@ def bg_text(label: str, has_custom: bool, n_tmdb: int, special: bool = False) ->
     )
 
 
-def bg_kb(uid: int, mid: int, key: str, has_custom: bool, n_tmdb: int, idx: int = 0, special: bool = False) -> InlineKeyboardMarkup:
+def bg_kb(uid: int, mid: int, key: str, has_custom: bool, n_tmdb: int, idx: int = 0, special: bool = False,
+          src: str = "AniList") -> InlineKeyboardMarkup:
     c = lambda a: _cb(uid, mid, key, a)
     on_anilist = idx < 0 or not n_tmdb
     rows: list[list[InlineKeyboardButton]] = []
@@ -173,7 +175,7 @@ def bg_kb(uid: int, mid: int, key: str, has_custom: bool, n_tmdb: int, idx: int 
         row = []
         if n_tmdb:
             row.append(btn("Next images" if special else "Next image", c("bgnext"), None, "🔄", None if on_anilist else "success"))
-        row.append(btn("AniList", c("bganilist"), None, "🅰️", "success" if on_anilist else None))
+        row.append(btn("Poster" if src == "TMDB" else "AniList", c("bganilist"), None, "🅰️", "success" if on_anilist else None))
         rows.append(row)
     rows.append([btn("Back", c("menu"), "back", "↩️")])
     return InlineKeyboardMarkup(inline_keyboard=rows)

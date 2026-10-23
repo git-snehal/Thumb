@@ -4,9 +4,12 @@ from __future__ import annotations
 import asyncio
 import html
 import re
+import time
 from dataclasses import dataclass
 
 import httpx
+
+from .ids import encode_tmdb
 
 URL = "https://graphql.anilist.co"
 
@@ -52,7 +55,11 @@ query ($id: Int) {
 }"""
 
 
-class AniListError(Exception):
+class SourceError(Exception):
+    """A title source (AniList or TMDB) couldn't answer. The message is safe to show to people."""
+
+
+class AniListError(SourceError):
     pass
 
 
@@ -62,13 +69,18 @@ class SearchHit:
     title: str
     year: int | None
     format: str | None
+    source: str = "anilist"          # "anilist" or "tmdb"
+    extra: str = ""                  # e.g. "TV" / "Movie" for TMDB results
 
     @property
     def label(self) -> str:
         bits = [self.title]
         if self.year:
             bits.append(f"({self.year})")
-        return " ".join(bits)[:60]
+        text = " ".join(bits)
+        if self.extra:
+            text = f"{text[:48]} · {self.extra}"
+        return text[:60]
 
 
 def _title(t: dict) -> str:
@@ -130,8 +142,12 @@ def vivid(hex_color: str) -> str:
 
 
 def parse_query(text: str) -> tuple[str, int | str]:
-    """Return ("id", n) for AniList links / `id:123`, else ("search", text)."""
+    """("id", n) for AniList links / `id:123`, for TMDB links / `tmdb:tv/1399` (n is a negative TMDB id),
+    otherwise ("search", text)."""
     text = text.strip()
+    m = re.search(r"themoviedb\.org/(tv|movie)/(\d+)", text) or re.fullmatch(r"tmdb:\s*(tv|movie)\s*/\s*(\d+)", text, re.I)
+    if m:
+        return "id", encode_tmdb(m.group(1).lower(), int(m.group(2)))
     m = re.search(r"anilist\.co/anime/(\d+)", text)
     if m:
         return "id", int(m.group(1))
@@ -142,15 +158,29 @@ def parse_query(text: str) -> tuple[str, int | str]:
 
 
 class AniList:
+    DOWN_FOR = 45          # seconds to skip AniList after it failed, so people aren't kept waiting on every request
+
     def __init__(self, client: httpx.AsyncClient):
         self.http = client
+        self._down_until = 0.0
 
-    async def _gql(self, query: str, variables: dict) -> dict:
-        for attempt in range(3):
+    @property
+    def is_down(self) -> bool:
+        return time.monotonic() < self._down_until
+
+    def _trip(self) -> None:
+        self._down_until = time.monotonic() + self.DOWN_FOR
+
+    async def _gql(self, query: str, variables: dict, timeout: float = 20, attempts: int = 3) -> dict:
+        if self.is_down:
+            raise AniListError("AniList isn't responding right now.")
+        for attempt in range(attempts):
+            last = attempt == attempts - 1
             try:
-                r = await self.http.post(URL, json={"query": query, "variables": variables}, timeout=20)
+                r = await self.http.post(URL, json={"query": query, "variables": variables}, timeout=timeout)
             except httpx.HTTPError as e:
-                if attempt == 2:
+                if last:
+                    self._trip()
                     raise AniListError(f"AniList unreachable: {e}") from e
                 await asyncio.sleep(1 + attempt)
                 continue
@@ -159,13 +189,21 @@ class AniList:
                 continue
             if r.status_code == 404:
                 raise AniListError("Anime not found.")
+            if r.status_code >= 500:                       # AniList itself is having trouble: retry, then give up fast
+                if last:
+                    self._trip()
+                    raise AniListError(f"AniList error {r.status_code}")
+                await asyncio.sleep(1 + attempt)
+                continue
             if r.status_code >= 400:
                 raise AniListError(f"AniList error {r.status_code}")
+            self._down_until = 0.0
             return r.json()["data"]
+        self._trip()
         raise AniListError("AniList is rate-limiting us, try again shortly.")
 
     async def search(self, query: str) -> list[SearchHit]:
-        data = await self._gql(SEARCH_Q, {"q": query})
+        data = await self._gql(SEARCH_Q, {"q": query}, timeout=7, attempts=2)   # fail fast so the TMDB fallback starts soon
         return [
             SearchHit(m["id"], _title(m["title"]), m.get("seasonYear"), m.get("format"))
             for m in data["Page"]["media"]

@@ -71,9 +71,11 @@ async def _view(app: App, uid: int, mid: int, key: str, view: str):
         if key == "special":        # the special design only uses these for its two Next cards
             n = len(anime.get("tmdb_urls") or [])
             label = "TMDB images" if n and art["idx"] >= 0 else "AniList images"
-            return bg_text(label, False, n, True), (lambda: bg_kb(uid, mid, key, False, n, art["idx"], True))
+            src = "TMDB" if anime.get("source") == "tmdb" else "AniList"
+            return bg_text(label, False, n, True, src), (lambda: bg_kb(uid, mid, key, False, n, art["idx"], True, src))
         label, has_custom, n = await app.art_label(uid, anime)
-        return bg_text(label, has_custom, n), (lambda: bg_kb(uid, mid, key, has_custom, n, art["idx"]))
+        src = "TMDB" if anime.get("source") == "tmdb" else "AniList"
+        return bg_text(label, has_custom, n, False, src), (lambda: bg_kb(uid, mid, key, has_custom, n, art["idx"], False, src))
     if view == "edt":
         anime = await app.cache.get(mid)
         ed = await app.store.get_edits(uid, mid)

@@ -8,11 +8,15 @@ Attribution (required by TMDB): "This product uses the TMDB API but is not endor
 """
 from __future__ import annotations
 
+import asyncio
 import logging
 import re
 from difflib import SequenceMatcher
 
 import httpx
+
+from .anilist import SearchHit, SourceError, readable_on, split_special, split_title, vivid
+from .ids import decode_tmdb, encode_tmdb
 
 log = logging.getLogger(__name__)
 API = "https://api.themoviedb.org/3"
@@ -29,7 +33,7 @@ _SEASONISH = re.compile(
 )
 
 
-class TMDBError(Exception):
+class TMDBError(SourceError):
     pass
 
 
@@ -98,10 +102,16 @@ class TMDB:
             headers, extra = {"Authorization": f"Bearer {self.key}"}, {}
         else:
             headers, extra = {}, {"api_key": self.key}
-        r = await self.http.get(API + path, params={**params, **extra}, headers=headers, timeout=10)
+        try:
+            r = await self.http.get(API + path, params={**params, **extra}, headers=headers, timeout=10)
+        except httpx.HTTPError as e:
+            raise TMDBError("TMDB isn't responding right now.") from e
         if r.status_code == 401:
             raise TMDBError("TMDB rejected the API key (401). Check TMDB_API_KEY in settings.py.")
-        r.raise_for_status()
+        if r.status_code == 404:
+            raise TMDBError("TMDB doesn't have that title.")
+        if r.status_code >= 400:
+            raise TMDBError(f"TMDB error {r.status_code}.")
         return r.json()
 
     async def find(self, meta: dict) -> tuple[str, int, dict] | None:
@@ -133,12 +143,92 @@ class TMDB:
 
     async def backdrops(self, meta: dict) -> list[str]:
         """Ranked file paths of landscape backdrops for this anime ([] when nothing trustworthy is found)."""
-        found = await self.find(meta)
-        if not found:
-            return []
-        kind, tid, result = found
+        if meta.get("tmdb_ref"):                      # the title itself came from TMDB: no searching needed
+            kind, tid = meta["tmdb_ref"]
+            result = {}
+        else:
+            found = await self.find(meta)
+            if not found:
+                return []
+            kind, tid, result = found
         data = await self._get(f"/{kind}/{tid}/images", include_image_language="en,ja,null")
         paths = rank_backdrops(data.get("backdrops") or [])
         if not paths and result.get("backdrop_path"):
             paths = [result["backdrop_path"]]
         return paths
+
+    # ------------------------------------------------------------------ TMDB as a source of titles
+    async def search(self, query: str) -> list[SearchHit]:
+        """Search TV and movies. Animation is ranked first (this is an anime bot), then by name similarity."""
+        tv, movie = await asyncio.gather(
+            *(self._get(f"/search/{k}", query=query, include_adult="false", language="en-US") for k in ("tv", "movie")),
+            return_exceptions=True)
+        if isinstance(tv, Exception) and isinstance(movie, Exception):
+            raise tv
+        scored = []
+        for kind, data in (("tv", tv), ("movie", movie)):
+            if isinstance(data, Exception):
+                continue
+            for r in (data.get("results") or [])[:8]:
+                if not (r.get("poster_path") or r.get("backdrop_path")):
+                    continue                              # nothing to build a poster from
+                name = r.get("name") or r.get("title") or ""
+                sim = max(similarity(query, name), similarity(query, r.get("original_name") or r.get("original_title") or ""))
+                animation = 16 in (r.get("genre_ids") or [])
+                scored.append((sim + (0.25 if animation else 0) + min(r.get("popularity") or 0, 100) / 1000, kind, r, name))
+        scored.sort(key=lambda x: x[0], reverse=True)
+        hits, seen = [], set()
+        for _, kind, r, name in scored:
+            mid = encode_tmdb(kind, r["id"])
+            if mid in seen:
+                continue
+            seen.add(mid)
+            date = (r.get("first_air_date") or r.get("release_date") or "")[:4]
+            hits.append(SearchHit(mid, name or "Untitled", int(date) if date.isdigit() else None,
+                                  "TV" if kind == "tv" else "Movie", source="tmdb", extra="TV" if kind == "tv" else "Movie"))
+        return hits[:5]
+
+    async def media(self, media_id: int) -> dict:
+        """Everything the templates need for one TMDB title, in the same shape AniList titles have."""
+        ref = decode_tmdb(media_id)
+        if not ref:
+            raise TMDBError("That isn't a TMDB title.")
+        kind, tid = ref
+        d = await self._get(f"/{kind}/{tid}", language="en-US", append_to_response="credits")
+        is_tv = kind == "tv"
+        title = (d.get("name") if is_tv else d.get("title")) or "Untitled"
+        original = (d.get("original_name") if is_tv else d.get("original_title")) or ""
+        date = (d.get("first_air_date") if is_tv else d.get("release_date")) or ""
+        year = int(date[:4]) if date[:4].isdigit() else None
+        genres = [g["name"] for g in (d.get("genres") or []) if g.get("name")]
+        vote = float(d.get("vote_average") or 0)
+        company = next(iter(d.get("production_companies") or []), None) or next(iter(d.get("networks") or []), None) or {}
+        episodes = d.get("number_of_episodes") if is_tv else None
+        runtime = d.get("runtime") if not is_tv else next(iter(d.get("episode_run_time") or []), None)
+        status = {"Returning Series": "Releasing", "Ended": "Finished", "Canceled": "Cancelled"}.get(d.get("status") or "", d.get("status") or "")
+        poster, backdrop = d.get("poster_path"), d.get("backdrop_path")
+        cast = []
+        for c in ((d.get("credits") or {}).get("cast") or [])[:3]:
+            if c.get("name"):
+                cast.append({"name": c.get("character") or c["name"], "image_url": self.image_url(c["profile_path"], "w185") if c.get("profile_path") else None,
+                             "role": "MAIN", "va_name": c["name"], "va_image_url": None})
+        title_a, title_b = split_title(title)
+        title_big, title_small = split_special(title)
+        return {
+            "id": media_id, "url": f"https://www.themoviedb.org/{kind}/{tid}", "source": "tmdb", "tmdb_ref": (kind, tid),
+            "title": title, "title_native": original if original and original != title else None,
+            "title_english": title, "title_romaji": original, "format_raw": "TV" if is_tv else "MOVIE",
+            "title_a": title_a, "title_b": title_b, "title_big": title_big, "title_small": title_small,
+            "description": (d.get("overview") or "").strip() or "No synopsis available.",
+            "format": "TV" if is_tv else "Movie", "status": status, "season": "", "year": year,
+            "episodes": episodes, "duration": runtime,
+            "season_line": str(year) if year else ("TV" if is_tv else "Movie"),
+            "episodes_label": (f"{episodes} episodes" if episodes else "") if is_tv else (f"{runtime} min" if runtime else ""),
+            "score10": round(vote, 1) if vote else None, "stars5": round(vote / 2, 2), "star_pct": round(vote * 10, 1),
+            "genres": genres[:3], "genres4": genres[:4], "studio": company.get("name"),
+            "accent": "#7c5cff", "accent_fg": "#fff", "accent_vivid": vivid("#7c5cff"), "accent_vivid_fg": "#fff",
+            "needs_accent": True,                          # AnimeCache fills these in from the poster once it is downloaded
+            "banner_url": self.image_url(backdrop, "w1280") if backdrop else None,
+            "cover_url": self.image_url(poster or backdrop, "w780") if (poster or backdrop) else None,
+            "thumb_urls": [], "characters": cast,
+        }

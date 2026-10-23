@@ -10,15 +10,17 @@ from aiogram.filters import Command, CommandObject
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InputMediaPhoto, Message
 
-from .anilist import AniListError, parse_query
+from .anilist import SourceError, parse_query
 from .app import BUSY, App, NeedCharacter, RateLimited, guard_icons
 from .customize import ask_character
+from .search import explain, find_hits
 from .keyboards import caption, current_key, grid_caption, grid_kb, picker_kb, template_kb
 
 log = logging.getLogger(__name__)
 router = Router()
 
-_COOLDOWN: dict[int, float] = {}   # user id -> last /anime time
+_COOLDOWN: dict[int, float] = {}   # user id -> last /poster time
+_LAST_QUERY: dict[int, str] = {}   # user id -> their last search text (for the 'Search TMDB' button)
 
 
 async def send_banner(message: Message, app: App, uid: int, media_id: int) -> None:
@@ -29,8 +31,8 @@ async def send_banner(message: Message, app: App, uid: int, media_id: int) -> No
     except RateLimited as e:
         await status.edit_text(f"⏳ Slow down a little: try again in {e.retry_after:.0f}s.")
         return
-    except AniListError as e:
-        await status.edit_text(f"❌ {e}")
+    except SourceError as e:
+        await status.edit_text(f"❌ {explain(e)}")
         return
     except Exception:
         log.exception("render failed")
@@ -45,7 +47,7 @@ async def send_banner(message: Message, app: App, uid: int, media_id: int) -> No
     await status.delete()
 
 
-@router.message(Command("poster", "anime", "thumb"))        # /poster is the main command; the others still work
+@router.message(Command("poster"))
 async def poster_cmd(message: Message, command: CommandObject, app: App) -> None:
     query = (command.args or "").strip()
     if not query and message.reply_to_message:
@@ -65,18 +67,49 @@ async def poster_cmd(message: Message, command: CommandObject, app: App) -> None
         return
 
     try:
-        hits = await app.anilist.search(str(value))
-    except AniListError as e:
-        await message.answer(f"❌ {e}")
+        hits, note = await find_hits(app, str(value))
+    except SourceError as e:
+        await message.answer(f"❌ {explain(e)}")
         return
     if not hits:
-        await message.answer("😕 No anime found for that. Try the English or romaji title.")
+        await message.answer("😕 No anime found for that. Try the English or romaji title."
+                             + (" I looked on TMDB too." if app.tmdb and app.tmdb.enabled else ""))
         return
+    _LAST_QUERY[uid] = str(value)
+    if len(_LAST_QUERY) > 500:                       # keep this small
+        _LAST_QUERY.pop(next(iter(_LAST_QUERY)))
     exact = hits[0].title.lower() == str(value).lower()
     if len(hits) == 1 or exact:
+        if note:
+            await message.answer(f"ℹ️ {note}")
         await send_banner(message, app, uid, hits[0].id)
     else:
-        await message.answer("Which one did you mean?", reply_markup=picker_kb(uid, hits))
+        offer = hits[0].source == "anilist" and bool(app.tmdb and app.tmdb.enabled)
+        await message.answer(f"{note + chr(10) if note else ''}Which one did you mean?",
+                             reply_markup=picker_kb(uid, hits, offer_tmdb=offer))
+
+
+@router.callback_query(F.data.startswith("tq:"))
+async def search_tmdb(call: CallbackQuery, app: App) -> None:
+    """'Not here? Search TMDB': run the same search on TMDB and replace the list."""
+    uid = int(call.data.split(":")[1])
+    if call.from_user.id != uid:
+        await call.answer("This menu belongs to someone else.", show_alert=True)
+        return
+    query = _LAST_QUERY.get(uid)
+    if not query or not (app.tmdb and app.tmdb.enabled):
+        await call.answer("Send /poster and the name again.", show_alert=True)
+        return
+    await call.answer("Searching TMDB…")
+    try:
+        hits = await app.tmdb.search(query)
+    except SourceError as e:
+        await call.message.answer(f"❌ {explain(e)}")
+        return
+    if not hits:
+        await call.message.answer("😕 TMDB doesn't have that either.")
+        return
+    await call.message.edit_text("From TMDB. Which one did you mean?", reply_markup=picker_kb(uid, hits))
 
 
 @router.callback_query(F.data.startswith("p:"))

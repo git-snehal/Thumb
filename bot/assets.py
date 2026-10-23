@@ -9,7 +9,9 @@ from collections import OrderedDict
 
 import httpx
 
-from .anilist import AniList
+from . import schemes
+from .anilist import AniList, SourceError, readable_on, vivid
+from .ids import is_tmdb
 
 log = logging.getLogger(__name__)
 
@@ -100,12 +102,47 @@ class AnimeCache:
             hit = self._data.get(media_id)
             if hit and time.time() - hit[0] < self.ttl:
                 return hit[1]
-            prepared = await inline_images(self.http, await self.anilist.media(media_id))
-            prepared["tmdb_urls"] = await self._tmdb_paths(prepared)
+            try:
+                prepared = await self._fetch(media_id)
+            except Exception as e:
+                if hit:    # the source is down but we have an older copy: keep working with it for a couple of minutes
+                    log.warning("Refreshing title %s failed (%s); serving the cached copy.", media_id, e)
+                    self._data[media_id] = (time.time() - self.ttl + 120, hit[1])
+                    return hit[1]
+                raise
             self._data[media_id] = (time.time(), prepared)
             while len(self._data) > self.size:
                 self._data.popitem(last=False)
             return prepared
+
+    async def _fetch(self, media_id: int) -> dict:
+        """Fetch one title from its source (AniList, or TMDB for negative ids) and prepare it for rendering."""
+        if is_tmdb(media_id):
+            if not (self.tmdb and self.tmdb.enabled):
+                raise SourceError("TMDB isn't set up on this bot, so I can't open that title.")
+            raw = await self.tmdb.media(media_id)
+        else:
+            raw = await self.anilist.media(media_id)
+        prepared = await inline_images(self.http, raw)
+        if prepared.get("needs_accent"):
+            await self._accent_from_poster(prepared)
+        prepared["tmdb_urls"] = await self._tmdb_paths(prepared)
+        return prepared
+
+    async def _accent_from_poster(self, anime: dict) -> None:
+        """TMDB gives no cover colour (AniList does), so take the poster's most colourful characteristic colour."""
+        anime.pop("needs_accent", None)
+        uri = anime.get("cover")
+        if not uri:
+            return
+        try:
+            raw = base64.b64decode(uri.split(",", 1)[1])
+            color = await asyncio.to_thread(schemes.accent_from_image, raw)
+        except Exception:
+            return
+        if color:
+            anime.update(accent=color, accent_fg=readable_on(color), accent_vivid=vivid(color),
+                         accent_vivid_fg=readable_on(vivid(color)))
 
     async def _tmdb_paths(self, anime: dict) -> list[str]:
         """Backdrop paths from TMDB, or [] for any reason at all (no key, no match, network error)."""

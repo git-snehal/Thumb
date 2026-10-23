@@ -149,3 +149,11 @@ def from_image(raw: bytes, n: int = 3) -> str | None:
         chosen.append(((h + 0.09) % 1.0, s, max(v * 0.7, 0.3)))
     chosen.sort(key=lambda c: c[2], reverse=True)               # lighter at the top, darker lower
     return ",".join(_hsv_to_hex(h, s, v) for h, s, v in chosen)
+
+
+def accent_from_image(raw: bytes) -> str | None:
+    """The most colourful characteristic colour of a picture (for titles whose source gives no cover colour)."""
+    value = from_image(raw, 3)
+    if not value:
+        return None
+    return max(value.split(","), key=lambda c: _hex_to_hsv(c)[1])

@@ -50,32 +50,37 @@ def start_text(name: str) -> str:
 
 
 def help_text() -> str:
-    return (
-        f"📖 <b>{sc('guide')}</b>\n\n"
+    fallback = ("If AniList is down or doesn't have a title, I search TMDB instead. You can also paste a themoviedb.org "
+                "link or <code>tmdb:tv/1399</code>.\n") if TMDB_ON else ""
+    tmdb_art = ", or flip through HD art from TMDB" if TMDB_ON else ""
+    credit = "\n\n<i>This product uses the TMDB API but is not endorsed or certified by TMDB.</i>" if TMDB_ON else ""
+    blocks = [
+        f"📖 <b>{sc('guide')}</b>\n",
         f"<blockquote>🖼 <b>{sc('make a thumbnail')}</b>\n"
         "/poster &lt;name&gt;\n"
         "/poster id:163134\n"
         "/poster https://anilist.co/anime/163134\n"
-        "…or reply to a message containing a title with /poster</blockquote>\n"
+        "…or reply to a message containing a title with /poster\n"
+        f"{fallback}</blockquote>",
         f"<blockquote>🎛 <b>{sc('switch templates')}</b>\n"
-        "Tap the buttons under the banner. The same message updates in place.</blockquote>\n"
+        "Tap the buttons under the banner. The same message updates in place.</blockquote>",
         f"<blockquote>✨ <b>{sc('special design')}</b>\n"
         "Tap “Special Design” under a banner, send a character image (transparent PNG is best, "
         "normal images get their background removed), then change the background colors "
-        "or nudge the character.</blockquote>\n"
+        "or nudge the character.</blockquote>",
         f"<blockquote>🛠 <b>{sc('under every banner')}</b>\n"
         "👀 Preview all: every design in one picture, tap a number to use it\n"
         "✨ HD file: a sharper 2560×1440 PNG\n"
-        "Customize → Edit text: fix the synopsis, genres, season line or episode label</blockquote>\n"
+        "Customize → Edit text: fix the synopsis, genres, season line or episode label</blockquote>",
         f"<blockquote>🌄 <b>{sc('background art')}</b>\n"
-        "Customize → Background image: upload your own picture (a wide 16:9 file looks best)"
-        + (", or flip through HD art from TMDB" if TMDB_ON else "") + ". Works on Template 1 and Posters 2 to 10.</blockquote>\n"
+        f"Customize → Background image: upload your own picture (a wide 16:9 file looks best){tmdb_art}. "
+        "Works on Template 1 and Posters 2 to 10.</blockquote>",
         f"<blockquote>🎨 <b>{sc('make it yours')}</b>\n"
         "/settings — brand text, logo (PNG), corner position and font.\n"
-        "Or tap “Customize” under any banner and watch it update live.</blockquote>\n"
+        "Or tap “Customize” under any banner and watch it update live.</blockquote>",
         f"<blockquote>🧰 <b>{sc('other')}</b>\n"
         "/emojiid — send me Premium emoji and I'll reply with their IDs\n"
         "/version — which version of the bot is running\n"
-        "/cancel — cancel a pending text/logo upload</blockquote>"
-        + ("\n\n<i>This product uses the TMDB API but is not endorsed or certified by TMDB.</i>" if TMDB_ON else "")
-    )
+        "/cancel — cancel a pending text/logo upload</blockquote>",
+    ]
+    return "\n".join(blocks) + credit
