@@ -1,6 +1,6 @@
 # Anime Thumb Bot
 
-A Telegram bot that turns an anime title into a streaming-site style banner. Switch between
+Telegram bot that turns an anime title into a streaming-site style banner. Switch between
 13 layouts with inline buttons (the same message updates in place), and let every user add their own
 brand text or logo, pick a corner, and choose a font.
 
