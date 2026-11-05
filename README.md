@@ -1,5 +1,5 @@
 <div align="center">
-<img src="https://user-images.githubusercontent.com/46998970/162791834-8c7c9ad0-42cf-4bc6-8208-d21f8a846f40.gif" width="100%" alt="Anime Painter Banner">
+<img src="./assets/painter.gif" width="100%" alt="Painter Animation">
 
   <h1>🎨 Thumb Bot</h1>
   
