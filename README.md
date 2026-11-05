@@ -1,6 +1,5 @@
 <div align="center">
-<img src="./assets/painter.gif" width="100%" alt="Painter Animation">
-
+  <img src="https://raw.githubusercontent.com/git-snehal/git-snehal/main/assets/painter.gif" width="100%" alt="Anime Painter Banner">
   <h1>🎨 Thumb Bot</h1>
   
   <p><b>A Telegram bot that turns any anime title into a streaming-site style banner.</b></p>
