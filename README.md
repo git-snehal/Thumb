@@ -68,7 +68,7 @@ brand text or logo, pick a corner, and choose a font.
 
 ## Settings
 
-On a VPS or in Docker use **environment variables / `.env`** (they win over `settings.py`). In Colab, where `.env` isn't read, use
+On a linux VPS or in Docker use **environment variables / `.env`** (they win over `settings.py`). In Colab, where `.env` isn't read, use
 `settings.py`.
 
 Open `settings.py` and fill in `BOT_TOKEN` (from @BotFather). That file is read directly, so it works in
