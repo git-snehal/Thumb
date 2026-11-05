@@ -1,7 +1,7 @@
 <div align="center">
-  <img src="https://user-images.githubusercontent.com/74038190/212284100-561aa473-3905-4a80-b561-0d28506553ee.gif" width="100%" alt="Anime Painter Banner">
+  <img src="https://c.tenor.com/2s46990S-gAAAAAC/painting-artist.gif" width="100%" alt="Anime Painter Banner">
 
-  <h1>🎨 Anime Thumb Bot</h1>
+  <h1>🎨 Thumb Bot</h1>
   
   <p><b>A Telegram bot that turns any anime title into a streaming-site style banner.</b></p>
 
@@ -99,11 +99,9 @@ cp .env.example .env
 docker compose up -d --build
 
 ```
-
----
-
 ## 📜 Credits & License
 
 * Built with Python, Playwright, Jinja2, and Chromium.
-* Uses the AniList and TMDB APIs.
-**Made By**-[@shinnoirr](https://t.me/shinnoirr)
+* Uses the AniList and TMDB APIs.*
+*  **Made By**-[@shinnoirr](https://t.me/shinnoirr)
+
