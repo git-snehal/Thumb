@@ -1,8 +1,4 @@
-Here is the complete, freshly redesigned `README.md` code for **Anime Thumb Bot**, featuring an animated painter banner and clean, organized sections:
-
-```markdown
 <div align="center">
-  <!-- Animated Painter Banner -->
   <img src="https://user-images.githubusercontent.com/74038190/212284100-561aa473-3905-4a80-b561-0d28506553ee.gif" width="100%" alt="Anime Painter Banner">
 
   <h1>🎨 Anime Thumb Bot</h1>
