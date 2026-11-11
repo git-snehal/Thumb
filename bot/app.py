@@ -176,6 +176,7 @@ class App:
         this person's character for this anime and return its index. None when there is nothing usable."""
         anime = await self.cache.get(media_id)
         urls = await self.character_candidates(anime)
+        log.info("character for %r: %d fanart.tv candidate(s)", anime.get("title"), len(urls))
         for step in range(len(urls)):
             i = (start + step) % len(urls)
             raw = await self.cache.fanart.fetch(urls[i])

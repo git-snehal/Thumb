@@ -29,6 +29,9 @@ DEFAULT_TEMPLATES = [
     TemplateSpec("animeposter8", "Poster 8", "poster8.html"),
     TemplateSpec("animeposter9", "Poster 9", "poster9.html"),
     TemplateSpec("animeposter10", "Poster 10", "poster10.html"),
+    TemplateSpec("animeposter11", "Poster 11", "poster11.html"),
+    TemplateSpec("animeposter12", "Poster 12", "poster12.html"),
+    TemplateSpec("animeposter13", "Poster 13", "poster13.html"),
     TemplateSpec("special", "✨ Special Design", "special.html", special=True),
 ]
 

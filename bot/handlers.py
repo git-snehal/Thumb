@@ -58,6 +58,39 @@ async def poster_cmd(message: Message, command: CommandObject, app: App) -> None
     await run_query(message, app, query)
 
 
+@router.message(Command("fanart"))
+async def fanart_cmd(message: Message, command: CommandObject, app: App) -> None:
+    """Shows exactly what fanart.tv gives for a title and where the lookup stops. Never prints the key."""
+    query = (command.args or "").strip()
+    if not query:
+        await message.answer("Usage: <code>/fanart Solo Leveling</code>. Checks character art and logos from fanart.tv.",
+                             parse_mode="HTML")
+        return
+    fan = app.cache.fanart
+    if not (fan and fan.enabled):
+        await message.answer("fanart.tv is <b>off</b>: FANART_API_KEY isn't set (or the bot wasn't restarted after setting it).",
+                             parse_mode="HTML")
+        return
+    kind, value = parse_query(query)
+    try:
+        if kind == "id":
+            media_id = int(value)
+        else:
+            hits, _ = await find_hits(app, str(value))
+            if not hits:
+                await message.answer("😕 No anime found for that.")
+                return
+            media_id = hits[0].id
+        anime = await app.cache.get(media_id)
+        lines = await fan.diagnose(anime)
+    except SourceError as e:
+        await message.answer(f"❌ {explain(e)}")
+        return
+    logo = "yes" if anime.get("title_logo") else "no (plain text title is used)"
+    await message.answer(f"<b>fanart.tv check:</b> {anime['title']}\n\n" + "\n".join(f"• {l}" for l in lines)
+                         + f"\n• Title logo ready for Posters 9 and 10: {logo}", parse_mode="HTML")
+
+
 def _plain_private_text(m: Message) -> bool:
     """A normal text message in a private chat: not a command, and not a Premium-emoji message (the emoji-ID helper
     in start.py wants those)."""
@@ -161,6 +194,9 @@ async def switch(call: CallbackQuery, app: App, state: FSMContext) -> None:
         # try fanart.tv first (a Telegram callback can only be answered once, so answer below, after this)
         if await app.pick_character(int(uid), int(mid)) is None:            # nothing on fanart.tv (or no key): ask
             await call.answer()
+            fan = app.cache.fanart
+            if fan and fan.enabled:
+                await call.message.answer("ℹ️ fanart.tv has no usable transparent character for this title, so please send one.")
             await ask_character(call.message, state, int(uid), int(mid), key)
             return
     ref = (call.message.chat.id, call.message.message_id)

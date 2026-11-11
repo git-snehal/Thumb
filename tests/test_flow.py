@@ -229,7 +229,7 @@ async def main():
     d = datas(photo.reply_markup)
     print("banner buttons:", len(d), "| styled:", photo.reply_markup.inline_keyboard[0][0].text)
     assert any(x.startswith("c:42:163134:template1:menu") for x in d) and any(x.startswith("f:") for x in d)
-    assert sum(x.startswith("t:") for x in d) == 13, "13 templates expected (12 + special)"
+    assert sum(x.startswith("t:") for x in d) == 16, "16 templates expected (15 + special)"
     assert any(x.startswith("t:42:163134:special") for x in d)
     assert len(photo.photo.data) > 20_000
 
@@ -673,7 +673,7 @@ async def main():
     sheet = next(c for c in session.calls if type(c).__name__ == "SendPhoto")
     grid_img = Image.open(io.BytesIO(sheet.photo.data))
     nums = [b for row in sheet.reply_markup.inline_keyboard for b in row]
-    assert grid_img.width == 3 * 640 + 4 * 18 and len(nums) == 13, (grid_img.size, len(nums))
+    assert grid_img.width == 3 * 640 + 4 * 18 and len(nums) == 16, (grid_img.size, len(nums))
     assert nums[0].text == "1" and nums[0].callback_data.startswith("t:42:163134:") and "all designs" in sheet.caption.lower() or "ᴀʟʟ ᴅᴇꜱɪɢɴꜱ" in sheet.caption
     print("preview grid:", grid_img.size, f"{len(sheet.photo.data) // 1024} KB,", len(nums), "designs")
     open("/tmp/grid_test.jpg", "wb").write(sheet.photo.data)
@@ -852,6 +852,10 @@ async def main():
     await tap("c:77:163134:special:crep", who=u77)
     assert "SendMessage" in session.names(), "Upload my own still asks for an image"
     await send("/cancel")
+    await send("/fanart alya")
+    text = session.calls[-1].text
+    assert "fanart.tv check" in text and "HTTP 200" in text and "Transparent and usable" in text and "Title logo ready" in text, text
+    assert "FK" not in text, "the key is never printed"
     print("fanart characters OK")
 
     # badges: preset toggles, at most four, shown in the Edit text panel

@@ -112,7 +112,7 @@ class Fanart:
         self.map_file = Path(data_dir) / "anilist_tvdb.json"
         self._map: dict[int, int] | None = None
         self._map_lock = asyncio.Lock()
-        self._records: OrderedDict[int, tuple[float, dict]] = OrderedDict()
+        self._records: OrderedDict[int, tuple[float, dict, float]] = OrderedDict()
 
     @property
     def enabled(self) -> bool:
@@ -153,56 +153,97 @@ class Fanart:
         data = await self.tmdb._get(f"/tv/{tmdb_id}/external_ids")
         return int(data["tvdb_id"]) if data.get("tvdb_id") else None
 
-    async def _lookup_key(self, anime: dict) -> tuple[str, int] | None:
-        """('tv', tvdb_id) or ('movies', tmdb_id) for this title, or None."""
+    async def _lookup_key(self, anime: dict) -> tuple[str, int, str] | None:
+        """('tv', tvdb_id, how) or ('movies', tmdb_id, how) for this title, or None."""
         ref = anime.get("tmdb_ref")
         if ref:
             kind, tid = ref
             if kind == "movie":
-                return "movies", int(tid)
+                return "movies", int(tid), "TMDB movie id"
             tvdb = await self._tvdb_from_tmdb("tv", int(tid))
-            return ("tv", tvdb) if tvdb else None
+            return ("tv", tvdb, "TMDB external ids") if tvdb else None
         aid = anime.get("id")
         tvdb = (await self._anilist_to_tvdb()).get(int(aid)) if aid else None
         if tvdb:
-            return "tv", tvdb
+            return "tv", tvdb, "anime-lists map"
         if self.tmdb and self.tmdb.enabled:                  # not in the map: find it on TMDB instead
             found = await self.tmdb.find(anime)
             if found:
                 kind, tid, _ = found
                 if kind == "movie":
-                    return "movies", int(tid)
+                    return "movies", int(tid), "TMDB search (movie)"
                 tvdb = await self._tvdb_from_tmdb("tv", int(tid))
                 if tvdb:
-                    return "tv", tvdb
+                    return "tv", tvdb, "TMDB search + external ids"
         return None
 
     # ------------------------------------------------------------------ fanart.tv records
     async def record(self, anime: dict) -> tuple[str, dict]:
-        """('tv'|'movies', the fanart.tv record). ('tv', {}) when nothing is known."""
+        """('tv'|'movies', the fanart.tv record). The record also carries _status / _why / _id / _how for diagnostics.
+        Only real answers (200 and 404) are remembered; a hiccup or a rejected key is retried on the next request."""
         if not self.enabled:
-            return "tv", {}
+            return "tv", {"_kind": "tv", "_status": None, "_why": "no FANART_API_KEY set"}
         cache_key = int(anime.get("id") or 0)
         hit = self._records.get(cache_key)
-        if hit and time.time() - hit[0] < RECORD_TTL:
+        if hit and time.time() - hit[0] < hit[2]:
             return hit[1]["_kind"], hit[1]
-        kind, data = "tv", {}
+        kind, data, status, why, fid, how, keep = "tv", {}, None, "", None, "", RECORD_TTL
         try:
             found = await self._lookup_key(anime)
-            if found:
-                kind, fid = found
+            if not found:
+                why, keep = "no TheTVDB/TMDB id found for this title", 30 * 60
+            else:
+                kind, fid, how = found
                 r = await self.http.get(f"{API}/{kind}/{fid}", params={"api_key": self.key}, timeout=15)
-                if r.status_code == 200:
+                status = r.status_code
+                if status == 200:
                     data = r.json()
-                elif r.status_code in (401, 403):
-                    log.warning("fanart.tv rejected the API key (%s). Check FANART_API_KEY.", r.status_code)
+                    why = "ok"
+                elif status == 404:
+                    why, keep = "fanart.tv has no art for this show", 30 * 60
+                elif status in (401, 403):
+                    why, keep = "fanart.tv rejected the API key (check FANART_API_KEY)", 0
+                    log.warning("fanart.tv rejected the API key (HTTP %s). Check FANART_API_KEY.", status)
+                else:
+                    why, keep = f"fanart.tv answered HTTP {status}", 0
         except Exception as e:
+            why, keep = f"lookup failed: {e}", 0
             log.warning("fanart.tv lookup failed for %r: %s", anime.get("title"), e)
-        data = {**data, "_kind": kind}
-        self._records[cache_key] = (time.time(), data)
-        while len(self._records) > 64:
-            self._records.popitem(last=False)
+        counts = {k: len(v) for k, v in data.items() if isinstance(v, list)}
+        log.info("fanart.tv for %r: id=%s via %s, status=%s (%s) %s", anime.get("title"), fid, how or "-", status, why,
+                 counts or "")
+        data = {**data, "_kind": kind, "_status": status, "_why": why, "_id": fid, "_how": how}
+        if keep:
+            self._records[cache_key] = (time.time(), data, keep)
+            while len(self._records) > 64:
+                self._records.popitem(last=False)
         return kind, data
+
+    async def diagnose(self, anime: dict) -> list[str]:
+        """Plain-language lines explaining what fanart.tv gave for this title (used by /fanart)."""
+        if not self.enabled:
+            return ["Key: <b>MISSING</b>. Set FANART_API_KEY (in .env or settings.py) and restart the bot."]
+        self._records.pop(int(anime.get("id") or 0), None)            # always look fresh when someone is debugging
+        kind, rec = await self.record(anime)
+        lines = ["Key: set"]
+        lines.append(f"ID used: {rec.get('_id') or 'none'}" + (f" ({kind}, from {rec['_how']})" if rec.get("_how") else ""))
+        lines.append(f"fanart.tv said: HTTP {rec.get('_status') or '-'}: {rec.get('_why')}")
+        if rec.get("_status") != 200:
+            return lines
+        kinds = MOVIE_CHARACTERS if kind == "movies" else SHOW_CHARACTERS
+        chars = pick_urls(rec, kinds, prefer_lang=("", "00", "en", "ja"))
+        lines.append("Character art listed: " + (", ".join(f"{k} {len(rec.get(k) or [])}" for k in kinds) or "none"))
+        usable = 0
+        for url in chars[:3]:
+            raw = await self.fetch(url)
+            if raw and prepare_character(raw):
+                usable += 1
+        lines.append(f"Transparent and usable (first {min(3, len(chars))} checked): {usable}")
+        logos = pick_urls(rec, MOVIE_LOGOS if kind == "movies" else SHOW_LOGOS)
+        lines.append("Title logos listed: " + (", ".join(f"{k} {len(rec.get(k) or [])}"
+                                                         for k in (MOVIE_LOGOS if kind == 'movies' else SHOW_LOGOS)) or "none")
+                     + (" (TMDB logos are tried too)" if not logos else ""))
+        return lines
 
     async def character_urls(self, anime: dict, limit: int = 12) -> list[str]:
         kind, rec = await self.record(anime)

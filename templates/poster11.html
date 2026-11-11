@@ -1,0 +1,63 @@
+{% extends "_base.html" %}
+{% from "_macros.html" import play, bookmark, chips with context %}
+
+{# Cinematic title card: full-bleed art, everything anchored bottom-left like a streaming-site hero.
+   Score chip + facts line, big title (or the real logo), genres, short synopsis, play button. #}
+{% set brand_style = 'plain' %}
+{% set facts = [a.format, a.year, a.episodes_label, a.status]|select|join('  •  ') %}
+{% block style %}
+body { background: #05060a; color: #fff; }
+.bg { position: absolute; inset: -50px; width: calc(100% + 100px); height: calc(100% + 100px); object-fit: cover; filter: blur(26px) brightness(.5) saturate(1.3); }
+.fill-img.wide { object-position: 60% 28%; }
+.key { position: absolute; right: 0; top: 0; height: 720px; width: 880px; object-fit: cover; object-position: center 20%;
+       -webkit-mask-image: linear-gradient(90deg, transparent 0, #000 34%); mask-image: linear-gradient(90deg, transparent 0, #000 34%); }
+.shade { position: absolute; inset: 0; background:
+  linear-gradient(0deg, rgba(4,5,9,.97) 0, rgba(4,5,9,.84) 26%, rgba(4,5,9,.32) 52%, transparent 74%),
+  linear-gradient(90deg, rgba(4,5,9,.8) 0, rgba(4,5,9,.28) 48%, transparent 74%),
+  linear-gradient(180deg, rgba(0,0,0,.42) 0, transparent 20%); }
+.studio { position: absolute; left: max(64px, var(--tl-shift, 0px)); top: 40px; display: flex; align-items: center; gap: 12px;
+          font-size: 15px; font-weight: 700; letter-spacing: .16em; text-transform: uppercase; color: rgba(255,255,255,.85); }
+.studio::before { content: ''; width: 34px; height: 3px; border-radius: 2px; background: var(--vivid); }
+.col { position: absolute; left: 64px; bottom: 56px; width: 820px; }
+.kicker { display: flex; align-items: center; gap: 16px; font-size: 16px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase; color: rgba(255,255,255,.88); }
+.score { display: flex; align-items: center; gap: 7px; padding: 5px 13px 5px 10px; border-radius: 8px; background: #f5b301; color: #111; font-family: var(--font-head); font-weight: 700; font-size: 18px; letter-spacing: 0; }
+.score svg { width: 16px; height: 16px; fill: #111; }
+h1 { margin-top: 16px; width: 820px; font-weight: 700; line-height: 1; text-transform: uppercase; overflow-wrap: normal; text-shadow: 0 6px 30px rgba(0,0,0,.5); }
+.tlogo { margin-top: 16px; max-width: 640px; max-height: 200px; width: auto; height: auto; object-fit: contain; filter: drop-shadow(0 6px 24px rgba(0,0,0,.6)); }
+.genres { margin-top: 18px; display: flex; align-items: center; gap: 12px; font-size: 16px; font-weight: 700; letter-spacing: .1em; text-transform: uppercase; color: rgba(255,255,255,.9); }
+.genres i { width: 6px; height: 6px; border-radius: 50%; background: var(--vivid); }
+.desc { margin-top: 14px; width: 660px; font-size: 15px; line-height: 1.45; color: rgba(255,255,255,.84); -webkit-line-clamp: 3; text-shadow: 0 1px 8px rgba(0,0,0,.7); }
+.btns { margin-top: 22px; display: flex; gap: 14px; align-items: center; }
+.go { height: 62px; padding: 0 34px; border-radius: 999px; display: flex; align-items: center; gap: 12px; background: var(--vivid); color: var(--vivid-fg);
+      font-size: 20px; font-weight: 700; text-transform: uppercase; box-shadow: 0 10px 30px color-mix(in srgb, var(--vivid) 40%, transparent); }
+.round { width: 62px; height: 62px; border-radius: 50%; border: 2.5px solid rgba(255,255,255,.85); display: grid; place-items: center; background: rgba(0,0,0,.2); }
+{% endblock %}
+
+{% block body %}
+{% if a.art_wide %}
+<img class="fill-img wide" src="{{ a.art }}">
+{% else %}
+<img class="bg" src="{{ a.art }}">
+<img class="key" src="{{ a.art }}">
+{% endif %}
+<div class="shade"></div>
+{% if a.studio %}<div class="studio">{{ a.studio }}</div>{% endif %}
+<div class="col">
+  <div class="kicker">
+    {% if a.score10 %}<span class="score"><svg viewBox="0 0 24 24"><path d="M12 2l2.9 6.6 7.1.6-5.4 4.7 1.6 7-6.2-3.7-6.2 3.7 1.6-7L2 9.2l7.1-.6z"/></svg>{{ a.score10 }}</span>{% endif %}
+    <span>{{ facts }}</span>
+  </div>
+  {% if a.title_logo %}<img class="tlogo" src="{{ a.title_logo }}" alt="{{ a.title }}">
+  {% else %}<h1 id="t">{{ a.title }}</h1>{% endif %}
+  <div class="genres">{% for g in (a.genres4 or a.genres)[:4] %}{% if not loop.first %}<i></i>{% endif %}<span>{{ g }}</span>{% endfor %}</div>
+  {{ chips(a.badges, 15) }}
+  <p class="desc clamp">{{ a.description|clip(230) }}</p>
+  <div class="btns">
+    <div class="go">{{ play(24) }}Play now</div>
+    <div class="round">{{ bookmark(24) }}</div>
+  </div>
+</div>
+<script>
+window.__fit = () => { const t = document.getElementById('t'); if (t) window.fitTitle(t, 2, 96, 38); };
+</script>
+{% endblock %}

@@ -134,6 +134,40 @@ def test_fanart_client_maps_anilist_to_tvdb_and_reads_record():
     run(go())
 
 
+def test_fanart_failures_are_not_remembered_and_diagnose_explains():
+    async def go():
+        with tempfile.TemporaryDirectory() as d:
+            status = {"code": 500}
+            hits = []
+
+            def handler(req):
+                if req.url.host == "raw.githubusercontent.com":
+                    return httpx.Response(200, json=[{"anilist_id": 5, "tvdb_id": 99}])
+                hits.append(status["code"])
+                if status["code"] == 200:
+                    return httpx.Response(200, json={"characterart": [{"url": "https://assets.fanart.tv/x.png"}]})
+                return httpx.Response(status["code"], json={})
+            async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as http:
+                f = fanart.Fanart(http, "KEY", None, Path(d))
+                anime = {"id": 5, "title": "T"}
+                assert await f.character_urls(anime) == []                       # a server hiccup...
+                status["code"] = 200
+                assert await f.character_urls(anime) == ["https://assets.fanart.tv/x.png"]   # ...is retried, not cached
+                status["code"] = 401
+                text = " ".join(await f.diagnose(anime))
+                assert "rejected the API key" in text and "ID used: 99" in text
+                status["code"] = 404
+                assert "no art for this show" in " ".join(await f.diagnose(anime))
+                n = len(hits)
+                await f.character_urls(anime)                                    # a 404 IS remembered for a while
+                assert len(hits) == n
+                missing = await f.diagnose({"id": 77, "title": "Unknown"})       # not in the id map, no TMDB
+                assert "no TheTVDB/TMDB id" in " ".join(missing)
+            off = fanart.Fanart(httpx.AsyncClient(), "", None, Path(d))
+            assert "MISSING" in (await off.diagnose({"id": 1}))[0]
+    run(go())
+
+
 # ----------------------------------------------------------------------------- extra art + upscaling
 def test_extra_art_parsers():
     jikan = {"data": [{"jpg": {"image_url": "s1", "large_image_url": "L1"}}, {"jpg": {"image_url": "s2"}}, {"jpg": {}}]}
@@ -325,17 +359,39 @@ def test_every_plain_template_renders_with_and_without_extras():
 
 
 def test_badges_show_on_the_designs_that_support_them():
-    for f in ("template1.html", "poster2.html", "poster5.html", "poster7.html", "poster8.html", "poster9.html", "poster10.html"):
-        assert "uchips" in _html(f, _sample(badges=["SUB", "1080p"])), f
-        assert "uchips" not in _html(f, _sample()), f
+    for f in ("template1.html", "poster2.html", "poster5.html", "poster7.html", "poster8.html", "poster9.html", "poster10.html",
+              "poster11.html", "poster12.html", "poster13.html"):
+        marker = "ribbon" if f == "poster13.html" else "uchips"          # Poster 13 shows badges as its ribbon
+        assert "1080p" in _html(f, _sample(badges=["SUB", "1080p"])), f
+        assert "1080p" not in _html(f, _sample()), f
+        if marker == "uchips":
+            assert "uchips" in _html(f, _sample(badges=["SUB"])) and "uchips" not in _html(f, _sample()), f
 
 
 def test_title_logo_replaces_text_title_with_fallback():
-    for f in ("poster9.html", "poster10.html"):
+    for f in ("poster9.html", "poster10.html", "poster11.html", "poster12.html"):
         with_logo = _html(f, _sample(title_logo="data:image/png;base64,BBBB"))
         assert 'class="tlogo"' in with_logo and 'id="t"' not in with_logo
         without = _html(f, _sample(title_logo=None))
         assert 'id="t"' in without and 'class="tlogo"' not in without
+
+
+def test_poster13_splits_the_title_and_handles_logo_and_ribbon():
+    plain = _html("poster13.html", _sample())
+    assert 'id="b"' in plain and 'class="tlogo"' not in plain
+    assert "12 episodes" in plain                                               # no badges: the ribbon shows the episode label
+    badged = _html("poster13.html", _sample(badges=["SUB", "4K"]))
+    assert "SUB" in badged and "4K" in badged and "12 episodes" not in badged
+    logo = _html("poster13.html", _sample(title_logo="data:image/png;base64,BBBB"))
+    assert 'class="tlogo"' in logo and 'id="b"' not in logo
+    one_word = _html("poster13.html", {**_sample(), "title": "Bleach", "title_small": "", "title_big": "Bleach"})
+    assert 'id="s"' not in one_word and "Bleach" in one_word
+
+
+def test_new_posters_survive_missing_data():
+    bare = _sample(score10=None, star_pct=None, studio=None, genres=[], genres4=[], episodes=None, year=None)
+    for f in ("poster11.html", "poster12.html", "poster13.html"):
+        _html(f, bare)
 
 
 if __name__ == "__main__":
