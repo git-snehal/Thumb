@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import download with context %}
+{% from "_macros.html" import download, chips with context %}
 
 {# Showcase: accent-coloured left panel, sliced art on the right, text in a glass box, genre line, two buttons. #}
 {% set brand_style = 'plain' %}
@@ -15,6 +15,8 @@ body { background: #120508; color: #fff; --dk: color-mix(in srgb, var(--vivid) 3
 .t3 { width: 230px; } .t3 img { object-position: 20% 80%; transform: skewX(9deg) scale(1.3); transform-origin: 30% 80%; }
 .fade { position: absolute; inset: 0; background: linear-gradient(90deg, var(--dk) 0%, color-mix(in srgb, var(--dk) 70%, transparent) 40%, transparent 62%); }
 .col { position: absolute; left: 64px; top: 0; bottom: 0; width: 600px; display: flex; flex-direction: column; justify-content: center; gap: 22px; padding-top: 6px; }
+.tlogo { align-self: flex-start; max-width: 520px; max-height: 170px; width: auto; height: auto; object-fit: contain;
+         filter: drop-shadow(0 4px 20px rgba(0,0,0,.5)); }
 h1 { width: 600px; font-weight: 700; line-height: 1.04; text-transform: uppercase; letter-spacing: .03em; text-shadow: 0 4px 22px rgba(0,0,0,.35); }
 .studio { margin-top: -8px; font-size: 24px; font-weight: 500; opacity: .95; }
 .box { padding: 20px 24px; border-radius: 16px; background: rgba(255,255,255,.13); border: 1px solid rgba(255,255,255,.18); backdrop-filter: blur(6px);
@@ -36,13 +38,15 @@ h1 { width: 600px; font-weight: 700; line-height: 1.04; text-transform: uppercas
 </div>
 <div class="fade"></div>
 <div class="col">
-  <h1 id="t">{{ a.title }}</h1>
+  {% if a.title_logo %}<img class="tlogo" src="{{ a.title_logo }}" alt="{{ a.title }}">
+  {% else %}<h1 id="t">{{ a.title }}</h1>{% endif %}
   {% if a.studio %}<div class="studio">{{ a.studio }}</div>{% endif %}
+  {{ chips(a.badges, 16) }}
   <div class="box"><p class="clamp" style="-webkit-line-clamp:4">{{ a.description|clip(300) }}</p></div>
   <div class="genres">{% for g in (a.genres4 or a.genres) %}<span>{{ g }}</span>{% endfor %}</div>
   <div class="btns"><div class="btn2 fill">All Episodes</div><div class="btn2 line">Download</div></div>
 </div>
 <script>
-window.__fit = () => { window.fitTitle(document.getElementById('t'), 2, 70, 30); };
+window.__fit = () => { const t = document.getElementById('t'); if (t) window.fitTitle(t, 2, 70, 30); };
 </script>
 {% endblock %}

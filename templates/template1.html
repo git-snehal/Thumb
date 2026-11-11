@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import stars, bookmark, title_size with context %}
+{% from "_macros.html" import stars, bookmark, title_size, chips with context %}
 
 {% block style %}
 body { --bg: #ffffff; --fg: #111318; --muted: #7b808a; --line: #e4e6ea; --btn: #111318; --btn-fg: #fff;
@@ -37,6 +37,7 @@ h1 { font-weight: 700; line-height: 1.06; letter-spacing: -.02em; text-transform
   {% if a.score10 %}
   <div class="rating"><span>Avg Ratings:</span>{{ stars(a.star_pct, 17) }}<small>{{ a.score10 }}</small></div>
   {% else %}<div class="rating"></div>{% endif %}
+  {{ chips(a.badges) }}
   <p class="desc">{{ a.description|clip(300) }}</p>
   <div class="rule"></div>
   <div class="actions">

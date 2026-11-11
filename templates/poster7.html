@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import download, title_size with context %}
+{% from "_macros.html" import download, title_size, chips with context %}
 
 {% block style %}
 body { background: #f6f7fb; color: #1a1b22; --ink: color-mix(in srgb, var(--accent) 72%, black); --soft: #9a9eaa; }
@@ -37,6 +37,7 @@ h1 .b { color: var(--ink); font-family: inherit; }
 </div>
 <div class="col">
   <div class="meta">{{ [a.format, a.season_line, a.episodes_label]|select|join(' • ') }}</div>
+  {{ chips(a.badges) }}
   <h1 style="font-size:{{ title_size(a.title, 50, 44, 38, 32) }}px"><span>{{ a.title_a }}</span>{% if a.title_b %}<span class="b">{{ a.title_b }}</span>{% endif %}</h1>
   <p class="desc">{{ a.description|clip(150) }}</p>
 </div>

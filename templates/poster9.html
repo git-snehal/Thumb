@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import play, bookmark with context %}
+{% from "_macros.html" import play, bookmark, chips with context %}
 
 {# Cinematic hero: big art on the right, black fade on the left, huge title, two pill buttons.
    Brand logo and text each sit in their own corner, drawn plain (no chip). #}
@@ -20,6 +20,8 @@ body { background: #050507; color: #fff; }
 .col { position: absolute; left: 70px; width: 760px; top: 0; bottom: 0; display: flex; flex-direction: column; justify-content: center; padding-top: 14px; }
 .prod { font-size: 24px; font-weight: 700; text-transform: uppercase; letter-spacing: .01em; text-shadow: 0 2px 12px rgba(0,0,0,.6); }
 h1 { margin-top: 10px; width: 760px; font-weight: 700; line-height: 1; text-transform: uppercase; overflow-wrap: normal; text-shadow: 0 6px 30px rgba(0,0,0,.45); }
+.tlogo { margin-top: 10px; align-self: flex-start; max-width: 640px; max-height: 190px; width: auto; height: auto; object-fit: contain;
+         filter: drop-shadow(0 6px 24px rgba(0,0,0,.55)); }
 .bar { width: 224px; height: 4px; background: var(--vivid); margin: 24px 0 24px; border-radius: 2px; }
 .meta { font-size: 26px; font-weight: 700; text-transform: uppercase; text-shadow: 0 2px 12px rgba(0,0,0,.6); }
 .genres { display: flex; flex-wrap: wrap; gap: 12px; margin-top: 12px; }
@@ -43,9 +45,11 @@ h1 { margin-top: 10px; width: 760px; font-weight: 700; line-height: 1; text-tran
 {% endif %}
 <div class="col">
   <div class="prod">Production - {{ a.studio or a.format }}</div>
-  <h1 id="t">{{ a.title }}</h1>
+  {% if a.title_logo %}<img class="tlogo" src="{{ a.title_logo }}" alt="{{ a.title }}">
+  {% else %}<h1 id="t">{{ a.title }}</h1>{% endif %}
   <div class="bar"></div>
   <div class="meta">{{ meta }}</div>
+  {{ chips(a.badges, 16) }}
   <div class="genres">{% for g in (a.genres4 or a.genres) %}<span>{{ g }}</span>{% endfor %}</div>
   <p class="desc clamp">{{ a.description|clip(260) }}{% if long %}<u>see more.</u>{% endif %}</p>
   <div class="btns">
@@ -54,6 +58,6 @@ h1 { margin-top: 10px; width: 760px; font-weight: 700; line-height: 1; text-tran
   </div>
 </div>
 <script>
-window.__fit = () => { window.fitTitle(document.getElementById('t'), 2, 112, 40); };
+window.__fit = () => { const t = document.getElementById('t'); if (t) window.fitTitle(t, 2, 112, 40); };
 </script>
 {% endblock %}

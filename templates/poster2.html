@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import stars, play, title_size with context %}
+{% from "_macros.html" import stars, play, title_size, chips with context %}
 
 {% block style %}
 body { background: #0a0a12; color: #fff; }
@@ -29,6 +29,7 @@ h1 { font-weight: 700; line-height: 1.04; letter-spacing: -.02em; text-transform
 
 <div class="col">
   <div class="meta">{{ [a.format, a.season_line, a.studio]|select|join(' · ') }}</div>
+  {{ chips(a.badges) }}
   <h1 style="font-size:{{ title_size(a.title, 64, 56, 46, 38) }}px">{{ a.title }}</h1>
   <div class="stars-row">{{ stars(a.star_pct, 18, dim='rgba(255,255,255,.22)') }}{% if a.score10 %}<span>{{ a.score10 }}</span>{% endif %}</div>
   <div class="genres">{% for g in (a.genres4 or a.genres) %}<span>{{ g }}</span>{% endfor %}</div>

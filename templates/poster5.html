@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import title_size, download with context %}
+{% from "_macros.html" import title_size, download, chips with context %}
 
 {% block style %}
 body { background: #0b0713; color: #fff; --glow: color-mix(in srgb, var(--accent) 70%, white); }
@@ -26,6 +26,7 @@ h1 { font-weight: 700; line-height: 1.04; letter-spacing: -.02em; text-transform
 </div>
 <div class="col">
   <div class="sub">{{ [a.studio, a.format, a.season_line]|select|join(' · ') }}</div>
+  {{ chips(a.badges) }}
   <h1 style="font-size:{{ title_size(a.title, 60, 52, 44, 36) }}px">{{ a.title }}</h1>
   <div class="badges">
     <span class="bd dl">{{ download(17) }} Download</span>

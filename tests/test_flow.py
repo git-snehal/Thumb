@@ -110,7 +110,32 @@ def fake_web(request: httpx.Request) -> httpx.Response:
         if "/t/p/original/" in request.url.path:
             return httpx.Response(200, content=png(3200, 1800, (60, 110, 180)), headers={"content-type": "image/png"})
         return httpx.Response(200, content=png(1280, 720, (40, 90, 160)), headers={"content-type": "image/png"})
+    if request.url.host == "raw.githubusercontent.com":          # Fribb anime-lists
+        return httpx.Response(200, json=[{"anilist_id": 163134, "tvdb_id": 4242}])
+    if request.url.host == "webservice.fanart.tv":
+        if request.url.path == "/v3/tv/4242":
+            return httpx.Response(200, json={
+                "characterart": [{"url": f"https://assets.fanart.tv/c{i}.png", "likes": str(9 - i)} for i in (1, 2, 3)],
+                "hdtvlogo": [{"url": "https://assets.fanart.tv/logo.png", "lang": "en", "likes": "5"}]})
+        return httpx.Response(404, json={})
+    if request.url.host == "assets.fanart.tv":
+        if request.url.path == "/c2.png":                        # an opaque picture: not usable as a cut-out
+            return httpx.Response(200, content=png(300, 500, (200, 50, 50)), headers={"content-type": "image/png"})
+        if request.url.path == "/logo.png":
+            return httpx.Response(200, content=cutout_png(600, 200), headers={"content-type": "image/png"})
+        return httpx.Response(200, content=cutout_png(400, 700), headers={"content-type": "image/png"})
+    if request.url.host == "api.jikan.moe":
+        return httpx.Response(200, json={"data": [{"jpg": {"large_image_url": "https://cdn.myanimelist.net/images/anime/1/a.jpg"}}]})
     return httpx.Response(200, content=png(400, 600, (136, 153, 204)), headers={"content-type": "image/png"})
+
+
+def cutout_png(w, h):
+    """An opaque shape on a transparent background: what a fanart.tv character looks like."""
+    img = Image.new("RGBA", (w, h), (0, 0, 0, 0))
+    img.paste((230, 120, 160, 255), (w // 4, h // 6, w * 3 // 4, h))
+    b = io.BytesIO()
+    img.save(b, "PNG")
+    return b.getvalue()
 
 
 class FakeSession(BaseSession):
@@ -373,7 +398,7 @@ async def main():
 
     # 13) /version tells which copy answered; the stale-instance matcher
     await send("/version")
-    assert "v2.1" in session.calls[0].text and "process" in session.calls[0].text
+    assert "v2.2" in session.calls[0].text and "process" in session.calls[0].text
     assert instance.is_bot_cmdline(["/usr/bin/python3", "-m", "bot"]) and not instance.is_bot_cmdline(["python", "app.py"])
     await send("/help")
     assert "/poster" in session.calls[0].text and "/anime &lt;" not in session.calls[0].text and "/anime id" not in session.calls[0].text
@@ -792,6 +817,89 @@ async def main():
     assert not any(("anime" in (getattr(f.callback, "commands", ()) or ())) or ("thumb" in (getattr(f.callback, "commands", ()) or ()))
                    for h in _r.message.handlers for f in h.filters), "no handler is registered for the old names"
     print("only /poster OK")
+
+    # ---- v2.2: fanart.tv characters + logos, extra art, badges, title language, typing a name in a private chat ----
+    from bot.fanart import Fanart
+    MEDIA["idMal"] = 54321
+    app.cache.fanart = Fanart(http, "FK", tm, tmp)
+    app.cache._data.clear()                                        # re-fetch the title so logos / extra art are looked up
+    u77 = User(id=77, is_bot=False, first_name="New")
+
+    anime = await app.cache.get(163134)
+    assert anime["title_logo"] and anime["title_logo"].startswith("data:image/png"), "fanart.tv logo is fetched and embedded"
+    assert anime["tmdb_urls"][-1] == "https://cdn.myanimelist.net/images/anime/1/a.jpg", anime["tmdb_urls"]
+    assert anime["portrait_urls"] == [anime["tmdb_urls"][-1]], "Jikan pictures are marked portrait"
+    await app.store.set_art_idx(77, 163134, len(anime["tmdb_urls"]) - 1)
+    art, wide = await app.art_for(77, anime)
+    assert art and not wide, "a portrait poster is not used as a wide backdrop"
+    assert (await app.art_label(77, anime))[0].startswith("MyAnimeList image"), await app.art_label(77, anime)
+    await app.store.set_art_idx(77, 163134, 0)
+    print("fanart logo + extra art OK")
+
+    # Special Design for a person with no character: fanart.tv supplies one instead of asking for an upload
+    await tap("t:77:163134:special", who=u77)
+    ch = await app.store.get_character(77, 163134)
+    assert ch and ch["src_idx"] == 0, ch
+    assert "EditMessageMedia" in session.names() and "Wait" not in str(session.names()), session.names()
+    await tap("c:77:163134:special:char", who=u77)
+    cap = next(c for c in session.calls if type(c).__name__ == "EditMessageCaption")
+    assert any(x.endswith(":cnext") for x in datas(cap.reply_markup)), "Next character button shows when fanart.tv has candidates"
+    await tap("c:77:163134:special:cnext", who=u77)
+    assert (await app.store.get_character(77, 163134))["src_idx"] == 2, "the opaque candidate #2 is skipped"
+    await tap("c:77:163134:special:cnext", who=u77)
+    assert (await app.store.get_character(77, 163134))["src_idx"] == 0, "wraps around to the first one"
+    assert "EditMessageMedia" in session.names()
+    await tap("c:77:163134:special:crep", who=u77)
+    assert "SendMessage" in session.names(), "Upload my own still asks for an image"
+    await send("/cancel")
+    print("fanart characters OK")
+
+    # badges: preset toggles, at most four, shown in the Edit text panel
+    for idx, expect in ((0, "SUB"), (2, "SUB, 1080p"), (0, "1080p")):
+        await tap(f"c:77:163134:template1:bdg_{idx}", who=u77)
+        assert (await app.store.get_edits(77, 163134)).get("badges") == expect, (idx, expect)
+        assert "EditMessageMedia" in session.names()
+    for idx in (0, 1, 3, 4):
+        await tap(f"c:77:163134:template1:bdg_{idx}", who=u77)
+    await tap("c:77:163134:template1:bdg_5", who=u77)
+    assert session.calls[0].show_alert, "a fifth badge is refused"
+    assert len((await app.store.get_edits(77, 163134))["badges"].split(",")) == 4
+    anime2, _ = await app.render(163134, app.spec("animeposter9"), 77)
+    assert len(anime2["badges"]) == 4
+    await tap("c:77:163134:template1:edf_bdg", who=u77)             # "Custom badges": the next text message is theirs
+    custom = Message(message_id=8000, date=datetime.now(), chat=chat, from_user=u77, text="EP 12, SUB, 4K, HD, Extra, More")
+    session.calls.clear()
+    await dp.feed_update(bot, Update(update_id=9100, message=custom))
+    assert (await app.store.get_edits(77, 163134))["badges"] == "EP 12, SUB, 4K, HD", "custom badges: trimmed to four"
+    print("badges OK")
+
+    # title language and title logo toggles
+    await tap("c:77:163134:template1:tlang", who=u77)
+    assert (await app.store.get(77)).title_lang == "english"
+    await tap("c:77:163134:template1:tlang", who=u77)
+    assert (await app.store.get(77)).title_lang == "romaji"
+    anime3, _ = await app.render(163134, app.spec("animeposter9"), 77)
+    assert anime3["title"] == "Alya-san" and anime3["title_logo"], "romaji title; logo still on"
+    await tap("c:77:163134:template1:tlogo", who=u77)
+    assert (await app.store.get(77)).title_logo == "off"
+    anime4, _ = await app.render(163134, app.spec("animeposter9"), 77)
+    assert anime4["title_logo"] is None, "logo switched off"
+    await tap("c:77:163134:template1:tlogo", who=u77)
+    assert (await app.store.get(77)).title_logo is None
+    print("title language + logo toggles OK")
+
+    # private chats: a bare title works; a group message does not
+    await app.store.clear_edits(42, 163134)
+    await send("alya")
+    assert "SendPhoto" in session.names(), session.names()
+    group_msg = Message(message_id=7000, date=datetime.now(), chat=Chat(id=-100, type="supergroup"), from_user=user, text="alya")
+    session.calls.clear()
+    _COOLDOWN.clear()
+    await dp.feed_update(bot, Update(update_id=9000, message=group_msg))
+    assert not session.calls, "groups still need /poster"
+    await send("/poster alya")
+    assert "SendPhoto" in session.names()
+    print("private-chat lookup OK")
 
     await renderer.close()
     await http.aclose()

@@ -35,3 +35,10 @@
 {%- set n = title|length -%}
 {{ ((big if n <= 18 else mid if n <= 28 else small if n <= 44 else tiny) * fscale)|round|int }}
 {%- endmacro %}
+
+{# User-chosen badges (SUB, 1080p, ...) as small accent chips. Pass a.badges; renders nothing when empty. #}
+{% macro chips(items, size=14) -%}
+{%- if items %}<div class="uchips" style="display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 8px">
+{%- for b in items %}<span style="padding:{{ (size * 0.28)|round|int }}px {{ (size * 0.75)|round|int }}px;border-radius:6px;background:var(--vivid);color:var(--vivid-fg);font-family:var(--font-head);font-weight:700;font-size:{{ size }}px;line-height:1.2;letter-spacing:.05em;text-transform:uppercase;box-shadow:0 3px 10px rgba(0,0,0,.3)">{{ b }}</span>{% endfor -%}
+</div>{% endif -%}
+{%- endmacro %}

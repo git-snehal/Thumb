@@ -1,5 +1,5 @@
 {% extends "_base.html" %}
-{% from "_macros.html" import stars, arrow, title_size with context %}
+{% from "_macros.html" import stars, arrow, title_size, chips with context %}
 
 {% block style %}
 body { background: #f3f3f4; color: #101012; --ink: color-mix(in srgb, var(--accent) 80%, black); }
@@ -43,6 +43,7 @@ h1 .b { color: var(--ink); -webkit-line-clamp: 2; display: -webkit-box; -webkit-
 </div>
 <div class="col">
   <div class="tag">{{ [a.studio, a.season_line]|select|join(' · ') }}</div>
+  {{ chips(a.badges) }}
   <h1 style="font-size:{{ title_size(a.title, 52, 46, 40, 34) }}px"><span>{{ a.title_a }}</span>{% if a.title_b %}<span class="b">{{ a.title_b }}</span>{% endif %}</h1>
   <div class="dl">Download now {{ arrow(26) }}</div>
 </div>
