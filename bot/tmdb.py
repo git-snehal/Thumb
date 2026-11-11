@@ -84,6 +84,15 @@ def rank_backdrops(items: list[dict]) -> list[str]:
     return [b["file_path"] for b in good][:MAX_BACKDROPS]
 
 
+def rank_logos(items: list[dict]) -> list[str]:
+    """Title logos: English first, then language-less, then Japanese; best rated and widest first. No SVGs."""
+    order = {"en": 0, None: 1, "ja": 2}
+    good = [l for l in items if l.get("file_path") and not l["file_path"].lower().endswith(".svg")
+            and l.get("iso_639_1") in order and (l.get("width") or 0) >= 300]
+    good.sort(key=lambda l: (order[l.get("iso_639_1")], -(l.get("vote_average") or 0), -(l.get("width") or 0)))
+    return [l["file_path"] for l in good][:4]
+
+
 class TMDB:
     def __init__(self, client: httpx.AsyncClient, key: str):
         self.http = client
@@ -141,21 +150,25 @@ class TMDB:
             return None
         return best[1], best[2]["id"], best[2]
 
-    async def backdrops(self, meta: dict) -> list[str]:
-        """Ranked file paths of landscape backdrops for this anime ([] when nothing trustworthy is found)."""
+    async def images(self, meta: dict) -> tuple[list[str], list[str]]:
+        """(backdrop paths, title-logo paths) for this anime. ([], []) when nothing trustworthy is found."""
         if meta.get("tmdb_ref"):                      # the title itself came from TMDB: no searching needed
             kind, tid = meta["tmdb_ref"]
             result = {}
         else:
             found = await self.find(meta)
             if not found:
-                return []
+                return [], []
             kind, tid, result = found
         data = await self._get(f"/{kind}/{tid}/images", include_image_language="en,ja,null")
         paths = rank_backdrops(data.get("backdrops") or [])
         if not paths and result.get("backdrop_path"):
             paths = [result["backdrop_path"]]
-        return paths
+        return paths, rank_logos(data.get("logos") or [])
+
+    async def backdrops(self, meta: dict) -> list[str]:
+        """Ranked file paths of landscape backdrops for this anime ([] when nothing trustworthy is found)."""
+        return (await self.images(meta))[0]
 
     # ------------------------------------------------------------------ TMDB as a source of titles
     async def search(self, query: str) -> list[SearchHit]:

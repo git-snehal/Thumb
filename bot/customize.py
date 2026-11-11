@@ -15,7 +15,7 @@ from aiogram.types import BufferedInputFile, CallbackQuery, InputMediaPhoto, Mes
 
 from . import artimg, cutout, fonts, schemes
 from .app import BUSY, App, RateLimited, guard_icons
-from .keyboards import (EDIT_ACTIONS, EDIT_LABELS, bg_kb, bg_text, caption, char_kb, char_text, edit_kb, edit_text_view, title_kb, title_text, colors_kb, colors_text, font_kb, panel_kb, panel_text,
+from .keyboards import (BADGE_PRESETS, MAX_BADGES, badge_list, next_title_lang, EDIT_ACTIONS, EDIT_LABELS, bg_kb, bg_text, caption, char_kb, char_text, edit_kb, edit_text_view, title_kb, title_text, colors_kb, colors_text, font_kb, panel_kb, panel_text,
                         pos_text, position_kb, template_kb)
 from .style import POSITIONS
 
@@ -85,7 +85,8 @@ async def _view(app: App, uid: int, mid: int, key: str, view: str):
         return title_text(t), (lambda: title_kb(uid, mid, key, t))
     if view == "char":
         ch = await app.store.get_character(uid, mid)
-        return char_text(ch), (lambda: char_kb(uid, mid, key))
+        n = len(await app.character_candidates(await app.cache.get(mid)))
+        return char_text(ch, n), (lambda: char_kb(uid, mid, key, n))
     lpos = s.logo_position or app.cfg.logo_position
     if view == "pos":
         return pos_text("text", pos), (lambda: position_kb(uid, mid, key, pos, "text"))
@@ -93,7 +94,7 @@ async def _view(app: App, uid: int, mid: int, key: str, view: str):
         return pos_text("logo", lpos), (lambda: position_kb(uid, mid, key, lpos, "logo"))
     text = panel_text(s, app.cfg.brand_name, app.cfg.brand_position, app.cfg.logo_position)
     kbs = {
-        "menu": lambda: panel_kb(uid, mid, key, mid == 0),
+        "menu": lambda: panel_kb(uid, mid, key, mid == 0, s.title_lang, s.title_logo),
         "font": lambda: font_kb(uid, mid, key, font),
     }
     return text, kbs[view]
@@ -148,7 +149,7 @@ async def settings_cmd(message: Message, app: App) -> None:
     s = await app.store.get(uid)
     await guard_icons(lambda: message.answer(
         panel_text(s, app.cfg.brand_name, app.cfg.brand_position, app.cfg.logo_position),
-        parse_mode="HTML", reply_markup=panel_kb(uid, 0, "-", True)))
+        parse_mode="HTML", reply_markup=panel_kb(uid, 0, "-", True, s.title_lang, s.title_logo)))
 
 
 # --------------------------------------------------------------------------- buttons
@@ -204,9 +205,11 @@ async def on_panel(call: CallbackQuery, app: App, bot: Bot, state: FSMContext) -
                 "genres": "🏷 <b>Send the genres, separated by commas</b> (up to 4), for example <code>Action, Comedy, Fantasy</code>.",
                 "season_line": "📅 <b>Send the season line</b>, for example <code>Fall 2026</code> or <code>2nd Cour • Fall 2026</code>.",
                 "episodes_label": "🎞 <b>Send the episode label</b>, for example <code>11 episodes</code> or <code>Ep 13-24</code>.",
+                "badges": f"🏷 <b>Send up to {MAX_BADGES} badges, separated by commas</b>, for example <code>SUB, 1080p, EP 12</code>.",
             }
             original = {"synopsis": anime.get("description", ""), "genres": ", ".join(anime.get("genres4") or []),
-                        "season_line": anime.get("season_line", ""), "episodes_label": anime.get("episodes_label", "")}[field]
+                        "season_line": anime.get("season_line", ""), "episodes_label": anime.get("episodes_label", ""),
+                        "badges": ""}[field]
             shown_orig = original if len(original) < 160 else original[:157] + "…"
             await state.set_state(Wait.edit)
             prompt = await msg.answer(f"{prompts[field]}\nAniList says: <i>{shown_orig or '—'}</i>\n"
@@ -247,6 +250,40 @@ async def on_panel(call: CallbackQuery, app: App, bot: Bot, state: FSMContext) -
             await call.answer("AniList banner" if nxt == -2 else "AniList cover")
             await app.store.set_art_idx(uid, mid, nxt)
             await show("bg", True)
+        elif action == "tlang":
+            s = await app.store.get(uid)
+            nxt = next_title_lang(s.title_lang)
+            await call.answer(f"Title language: {nxt}")
+            await app.store.update(uid, title_lang=nxt)
+            await show("menu", True)
+        elif action == "tlogo":
+            s = await app.store.get(uid)
+            nxt = None if s.title_logo == "off" else "off"
+            await call.answer("Title logo: off (plain text)" if nxt else "Title logo: on")
+            await app.store.update(uid, title_logo=nxt)
+            await show("menu", True)
+        elif action == "cnext":
+            ch = await app.store.get_character(uid, mid)
+            start = 0 if not ch or ch.get("src_idx") is None else ch["src_idx"] + 1
+            await call.answer("Loading character…")
+            if await app.pick_character(uid, mid, start) is None:
+                await msg.answer("😕 fanart.tv has no usable transparent character for this one. You can upload your own.")
+            else:
+                await show("char", True)
+        elif action.startswith("bdg_") and action[4:].isdigit() and int(action[4:]) < len(BADGE_PRESETS):
+            ed = await app.store.get_edits(uid, mid)
+            current, preset = badge_list(ed), BADGE_PRESETS[int(action[4:])]
+            lowered = [b.lower() for b in current]
+            if preset.lower() in lowered:
+                current.pop(lowered.index(preset.lower()))
+            elif len(current) >= MAX_BADGES:
+                await call.answer(f"At most {MAX_BADGES} badges. Tap one to remove it first.", show_alert=True)
+                return
+            else:
+                current.append(preset)
+            await call.answer()
+            await app.store.set_edit(uid, mid, "badges", ", ".join(current) or None)
+            await show("edt", True)
         elif action == "ttl":
             await call.answer()
             await show("ttl")
@@ -374,7 +411,7 @@ async def got_text(message: Message, app: App, bot: Bot, state: FSMContext) -> N
     await _finish_input(bot, app, message, state, message.from_user.id)
 
 
-EDIT_LIMITS = {"synopsis": 600, "genres": 90, "season_line": 40, "episodes_label": 30}
+EDIT_LIMITS = {"synopsis": 600, "genres": 90, "season_line": 40, "episodes_label": 30, "badges": 80}
 
 
 @router.message(Wait.edit, F.text, ~F.text.startswith("/"))
@@ -384,6 +421,12 @@ async def got_edit(message: Message, app: App, bot: Bot, state: FSMContext) -> N
     text = " ".join(message.text.split())
     if text == "-":
         value = None                                              # back to AniList's original
+    elif field == "badges":
+        parts = [p.strip()[:14] for p in text.split(",") if p.strip()][:MAX_BADGES]
+        if not parts:
+            await message.answer("Send at least one badge, like <code>SUB, 1080p</code>, or /cancel.", parse_mode="HTML")
+            return
+        value = ", ".join(parts)
     elif field == "genres":
         parts = [p.strip()[:22] for p in text.split(",") if p.strip()][:4]
         if not parts:

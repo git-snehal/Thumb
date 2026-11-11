@@ -9,7 +9,7 @@ from pathlib import Path
 
 from PIL import Image
 
-_COLS = ("brand_text", "brand_off", "logo_path", "position", "font", "scheme", "logo_position")
+_COLS = ("brand_text", "brand_off", "logo_path", "position", "font", "scheme", "logo_position", "title_lang", "title_logo")
 
 
 @dataclass
@@ -21,6 +21,8 @@ class UserSettings:
     font: str | None = None
     scheme: str | None = None       # special-design colours: preset key, 'auto' or '#hex[,#hex]'
     logo_position: str | None = None
+    title_lang: str | None = None   # None/'auto' = English then romaji, or 'english' / 'romaji' / 'native'
+    title_logo: str | None = None   # 'off' = never use the real title logo (None = use it when there is one)
 
 
 class Store:
@@ -39,7 +41,7 @@ class Store:
                 "logo_path TEXT, position TEXT, font TEXT, scheme TEXT)"
             )
             cols = {r[1] for r in c.execute("PRAGMA table_info(user_settings)")}
-            for col in ("scheme", "logo_position"):   # upgrade databases created by older versions
+            for col in ("scheme", "logo_position", "title_lang", "title_logo"):   # upgrade databases created by older versions
                 if col not in cols:
                     c.execute(f"ALTER TABLE user_settings ADD COLUMN {col} TEXT")
             c.execute(
@@ -56,6 +58,9 @@ class Store:
                 "user_id INTEGER, anime_id INTEGER, synopsis TEXT, genres TEXT, season_line TEXT, "
                 "episodes_label TEXT, ts REAL, PRIMARY KEY (user_id, anime_id))"
             )
+            ecols = {r[1] for r in c.execute("PRAGMA table_info(text_edits)")}
+            if "badges" not in ecols:          # upgrade databases created by older versions
+                c.execute("ALTER TABLE text_edits ADD COLUMN badges TEXT")
             c.execute(
                 "CREATE TABLE IF NOT EXISTS backgrounds ("
                 "user_id INTEGER, anime_id INTEGER, path TEXT, idx INTEGER DEFAULT 0, "
@@ -66,6 +71,9 @@ class Store:
                 "user_id INTEGER, anime_id INTEGER, path TEXT, dx INTEGER DEFAULT 0, "
                 "scale REAL DEFAULT 1.0, ts REAL, PRIMARY KEY (user_id, anime_id))"
             )
+            ccols = {r[1] for r in c.execute("PRAGMA table_info(characters)")}
+            if "src_idx" not in ccols:         # which fanart.tv candidate this is (NULL = the person's own upload)
+                c.execute("ALTER TABLE characters ADD COLUMN src_idx INTEGER")
 
     def _conn(self) -> sqlite3.Connection:
         return sqlite3.connect(self.db_path)
@@ -75,7 +83,7 @@ class Store:
             row = c.execute(f"SELECT {','.join(_COLS)} FROM user_settings WHERE user_id=?", (uid,)).fetchone()
         if not row:
             return UserSettings()
-        return UserSettings(row[0], bool(row[1]), row[2], row[3], row[4], row[5], row[6])
+        return UserSettings(row[0], bool(row[1]), row[2], row[3], row[4], row[5], row[6], row[7], row[8])
 
     def _update(self, uid: int, **fields) -> None:
         assert set(fields) <= set(_COLS)
@@ -117,13 +125,13 @@ class Store:
     # -- characters (special design), one per user per anime -----------------
     MAX_CHARACTERS_PER_USER = 30
 
-    def _save_character(self, uid: int, anime_id: int, png: bytes) -> None:
+    def _save_character(self, uid: int, anime_id: int, png: bytes, src_idx: int | None = None) -> None:
         import time
         path = self.chars_dir / f"{uid}_{anime_id}.png"
         path.write_bytes(png)
         with self._conn() as c:
-            c.execute("INSERT OR REPLACE INTO characters (user_id, anime_id, path, dx, scale, ts) VALUES (?,?,?,0,1.0,?)",
-                      (uid, anime_id, str(path), time.time()))
+            c.execute("INSERT OR REPLACE INTO characters (user_id, anime_id, path, dx, scale, ts, src_idx) VALUES (?,?,?,0,1.0,?,?)",
+                      (uid, anime_id, str(path), time.time(), src_idx))
             old = c.execute("SELECT anime_id, path FROM characters WHERE user_id=? ORDER BY ts DESC LIMIT -1 OFFSET ?",
                             (uid, self.MAX_CHARACTERS_PER_USER)).fetchall()
             for aid, pth in old:             # keep storage bounded
@@ -132,18 +140,18 @@ class Store:
 
     def _get_character(self, uid: int, anime_id: int) -> dict | None:
         with self._conn() as c:
-            row = c.execute("SELECT path, dx, scale FROM characters WHERE user_id=? AND anime_id=?",
+            row = c.execute("SELECT path, dx, scale, src_idx FROM characters WHERE user_id=? AND anime_id=?",
                             (uid, anime_id)).fetchone()
         if not row or not Path(row[0]).is_file():
             return None
-        return {"path": row[0], "dx": row[1], "scale": row[2]}
+        return {"path": row[0], "dx": row[1], "scale": row[2], "src_idx": row[3]}
 
     def _adjust_character(self, uid: int, anime_id: int, dx: int, scale: float) -> None:
         with self._conn() as c:
             c.execute("UPDATE characters SET dx=?, scale=? WHERE user_id=? AND anime_id=?", (dx, scale, uid, anime_id))
 
-    async def save_character(self, uid: int, anime_id: int, png: bytes) -> None:
-        await asyncio.to_thread(self._save_character, uid, anime_id, png)
+    async def save_character(self, uid: int, anime_id: int, png: bytes, src_idx: int | None = None) -> None:
+        await asyncio.to_thread(self._save_character, uid, anime_id, png, src_idx)
 
     async def get_character(self, uid: int, anime_id: int) -> dict | None:
         return await asyncio.to_thread(self._get_character, uid, anime_id)
@@ -261,11 +269,11 @@ class Store:
 
 
     # -- text the person has corrected for one anime (synopsis, genres, season line, episode label) ---------
-    EDIT_FIELDS = ("synopsis", "genres", "season_line", "episodes_label")
+    EDIT_FIELDS = ("synopsis", "genres", "season_line", "episodes_label", "badges")
 
     def _get_edits(self, uid: int, anime_id: int) -> dict:
         with self._conn() as c:
-            row = c.execute("SELECT synopsis, genres, season_line, episodes_label FROM text_edits "
+            row = c.execute("SELECT synopsis, genres, season_line, episodes_label, badges FROM text_edits "
                             "WHERE user_id=? AND anime_id=?", (uid, anime_id)).fetchone()
         return {f: v for f, v in zip(self.EDIT_FIELDS, row or ()) if v is not None}
 
@@ -276,7 +284,7 @@ class Store:
             c.execute("INSERT OR IGNORE INTO text_edits (user_id, anime_id, ts) VALUES (?,?,?)", (uid, anime_id, time.time()))
             c.execute(f"UPDATE text_edits SET {field}=?, ts=? WHERE user_id=? AND anime_id=?", (value, time.time(), uid, anime_id))
             c.execute("DELETE FROM text_edits WHERE synopsis IS NULL AND genres IS NULL AND season_line IS NULL "
-                      "AND episodes_label IS NULL")
+                      "AND episodes_label IS NULL AND badges IS NULL")
             c.execute("DELETE FROM text_edits WHERE user_id=? AND anime_id NOT IN "
                       "(SELECT anime_id FROM text_edits WHERE user_id=? ORDER BY ts DESC LIMIT 60)", (uid, uid))
 

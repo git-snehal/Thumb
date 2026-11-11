@@ -17,6 +17,7 @@ from .anilist import AniList
 from .app import App
 from .assets import AnimeCache
 from .customize import router as customize_router
+from .fanart import Fanart
 from .guard import AllowListMiddleware, RateLimiter
 from .handlers import router as anime_router
 from .registry import load_templates
@@ -58,7 +59,11 @@ async def main() -> None:
     renderer = Renderer(cfg.templates_dir, cfg.assets_dir, cfg.render_concurrency)
     tmdb = TMDB(http, cfg.tmdb_key)
     texts.TMDB_ON = tmdb.enabled
-    app = App(cfg, anilist, AnimeCache(anilist, http, cfg.cache_ttl, tmdb=tmdb), renderer,
+    fanart = Fanart(http, cfg.fanart_key, tmdb, cfg.data_dir)
+    texts.FANART_ON = fanart.enabled
+    cache = AnimeCache(anilist, http, cfg.cache_ttl, tmdb=tmdb, fanart=fanart, extra_art=cfg.extra_art,
+                       upscale=cfg.upscale_art, title_logos=cfg.title_logos)
+    app = App(cfg, anilist, cache, renderer,
               load_templates(cfg.overrides_file), Store(cfg.db_path, cfg.logos_dir),
               RateLimiter(cfg.rate_limit, exempt=cfg.admin_ids))
 
@@ -80,8 +85,9 @@ async def main() -> None:
     except Exception as e:      # network hiccup at boot: keep going, polling retries by itself
         me = None
         logging.warning("Couldn't reach Telegram yet (%s). Will keep retrying.", e)
-    logging.info("Anime Thumb Bot v%s as @%s | TMDB art: %s | AI cutout: %s | allow-list: %s | rate limit: %s/min | data: %s",
-                 VERSION, me.username if me else "?", "on" if tmdb.enabled else "off", "on" if cfg.auto_cutout else "off",
+    logging.info("Anime Thumb Bot v%s as @%s | TMDB art: %s | fanart.tv: %s | AI cutout: %s | allow-list: %s | rate limit: %s/min | data: %s",
+                 VERSION, me.username if me else "?", "on" if tmdb.enabled else "off", "on" if fanart.enabled else "off",
+                 "on" if cfg.auto_cutout else "off",
                  f"{len(cfg.allowed_users)} users" if cfg.allowed_users else "open", cfg.rate_limit or "unlimited", cfg.data_dir)
 
     commands = ([

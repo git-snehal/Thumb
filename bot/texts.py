@@ -7,6 +7,7 @@ import random
 _SC = str.maketrans("abcdefghijklmnopqrstuvwxyz", "ᴀʙᴄᴅᴇꜰɢʜɪᴊᴋʟᴍɴᴏᴘǫʀꜱᴛᴜᴠᴡxʏᴢ")
 FANCY = True
 TMDB_ON = False      # set at startup when a TMDB key is configured (TMDB requires attribution)
+FANART_ON = False    # set at startup when a fanart.tv key is configured
 
 
 def sc(text: str) -> str:
@@ -54,10 +55,13 @@ def help_text() -> str:
                 "link or <code>tmdb:tv/1399</code>.\n") if TMDB_ON else ""
     tmdb_art = ", or flip through HD art from TMDB" if TMDB_ON else ""
     credit = "\n\n<i>This product uses the TMDB API but is not endorsed or certified by TMDB.</i>" if TMDB_ON else ""
+    if FANART_ON:
+        credit += "\n<i>Character art and logos: fanart.tv.</i>"
     blocks = [
         f"📖 <b>{sc('guide')}</b>\n",
         f"<blockquote>🖼 <b>{sc('make a thumbnail')}</b>\n"
-        "/poster &lt;name&gt;\n"
+        "In a private chat just send the name, like <code>Solo Leveling</code>.\n"
+        "In groups use /poster &lt;name&gt;\n"
         "/poster id:163134\n"
         "/poster https://anilist.co/anime/163134\n"
         "…or reply to a message containing a title with /poster\n"
@@ -65,13 +69,14 @@ def help_text() -> str:
         f"<blockquote>🎛 <b>{sc('switch templates')}</b>\n"
         "Tap the buttons under the banner. The same message updates in place.</blockquote>",
         f"<blockquote>✨ <b>{sc('special design')}</b>\n"
-        "Tap “Special Design” under a banner, send a character image (transparent PNG is best, "
-        "normal images get their background removed), then change the background colors "
-        "or nudge the character.</blockquote>",
+        "Tap “Special Design” under a banner. If a character can be found automatically I use it (tap Customize → "
+        "Character → Next character for others); otherwise send a character image (transparent PNG is best, "
+        "normal images get their background removed). Then change the colors or nudge the character.</blockquote>",
         f"<blockquote>🛠 <b>{sc('under every banner')}</b>\n"
         "👀 Preview all: every design in one picture, tap a number to use it\n"
         "✨ HD file: a sharper 2560×1440 PNG\n"
-        "Customize → Edit text: fix the synopsis, genres, season line or episode label</blockquote>",
+        "Customize → Edit text: fix the synopsis, genres, season line or episode label, and add badges like SUB or 1080p\n"
+        "Customize → Title: switch the title between English, romaji and native, or turn real title logos off</blockquote>",
         f"<blockquote>🌄 <b>{sc('background art')}</b>\n"
         f"Customize → Background image: upload your own picture (a wide 16:9 file looks best){tmdb_art}. "
         "Works on Template 1 and Posters 2 to 10.</blockquote>",

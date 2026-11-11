@@ -116,6 +116,12 @@ class Config:
     boxes_opacity: float = 1.0
     kill_old: bool = False
     tmdb_key: str = ""
+    fanart_key: str = ""
+    extra_art: bool = True                       # Jikan + Kitsu posters in the image rotation
+    upscale_art: bool = True                     # clean enlargement of small covers
+    title_logos: bool = True                     # real title logos (fanart.tv / TMDB) where a design supports them
+    watermark_text: str = ""                     # visible owner watermark (empty = off)
+    watermark_key: str = ""                      # secret for the invisible mark (empty = off)
     allowed_users: frozenset = frozenset()       # empty = anyone may use the bot
     admin_ids: frozenset = frozenset()           # never rate-limited, always allowed
     rate_limit: int = 20                         # render actions per user per minute (0 = unlimited)
@@ -157,6 +163,12 @@ def load() -> Config:
         boxes_opacity=_num("SPECIAL_BOXES_OPACITY", 1.0, float, 0.0, 1.0),
         kill_old=kill_old,
         tmdb_key=_str("TMDB_API_KEY"),
+        fanart_key=_str("FANART_API_KEY"),
+        extra_art=_bool("EXTRA_ART_SOURCES", True),
+        upscale_art=_bool("UPSCALE_SMALL_ART", True),
+        title_logos=_bool("TITLE_LOGOS", True),
+        watermark_text=_str("WATERMARK_TEXT"),
+        watermark_key=_str("WATERMARK_KEY"),
         fancy_text=_bool("FANCY_TEXT", True),
         auto_cutout=_bool("AUTO_CUTOUT", True),
         icons=_icons(),

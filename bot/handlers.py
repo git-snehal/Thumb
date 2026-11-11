@@ -6,7 +6,7 @@ import time
 
 from aiogram import F, Router
 from aiogram.exceptions import TelegramBadRequest
-from aiogram.filters import Command, CommandObject
+from aiogram.filters import Command, CommandObject, StateFilter
 from aiogram.fsm.context import FSMContext
 from aiogram.types import BufferedInputFile, CallbackQuery, InputMediaPhoto, Message
 
@@ -55,7 +55,28 @@ async def poster_cmd(message: Message, command: CommandObject, app: App) -> None
     if not query:
         await message.answer("Usage: <code>/poster Solo Leveling</code>", parse_mode="HTML")
         return
+    await run_query(message, app, query)
 
+
+def _plain_private_text(m: Message) -> bool:
+    """A normal text message in a private chat: not a command, and not a Premium-emoji message (the emoji-ID helper
+    in start.py wants those)."""
+    if m.chat.type != "private" or not m.text or m.text.startswith("/"):
+        return False
+    return not any(e.type == "custom_emoji" for e in (m.entities or []))
+
+
+@router.message(StateFilter(None), _plain_private_text)
+async def private_text(message: Message, app: App) -> None:
+    """In a private chat just typing a title is enough. Groups still need /poster, so the bot never reacts to chatter."""
+    query = message.text.strip()
+    if len(query) > 100 or "\n" in query:
+        await message.answer("Send just the anime name, like <code>Solo Leveling</code>.", parse_mode="HTML")
+        return
+    await run_query(message, app, query)
+
+
+async def run_query(message: Message, app: App, query: str) -> None:
     uid = message.from_user.id
     if time.time() - _COOLDOWN.get(uid, 0) < 3:
         return
@@ -137,9 +158,11 @@ async def switch(call: CallbackQuery, app: App, state: FSMContext) -> None:
         await call.answer("That template isn't available any more.", show_alert=True)
         return
     if spec.special and not await app.store.get_character(int(uid), int(mid)):
-        await call.answer()
-        await ask_character(call.message, state, int(uid), int(mid), key)   # first time: ask for the character
-        return
+        # try fanart.tv first (a Telegram callback can only be answered once, so answer below, after this)
+        if await app.pick_character(int(uid), int(mid)) is None:            # nothing on fanart.tv (or no key): ask
+            await call.answer()
+            await ask_character(call.message, state, int(uid), int(mid), key)
+            return
     ref = (call.message.chat.id, call.message.message_id)
     if ref in BUSY:
         await call.answer("Still rendering, one moment…")

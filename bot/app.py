@@ -12,10 +12,11 @@ from aiogram.exceptions import TelegramBadRequest
 
 from dataclasses import replace
 
-from . import icons, schemes
-from .anilist import AniList
+from . import artsources, icons, schemes, watermark
+from .anilist import AniList, split_special, split_title
 from .assets import AnimeCache
 from .config import Config
+from .fanart import prepare_character
 from .grid import compose_grid
 from .guard import RateLimited, RateLimiter  # noqa: F401  (RateLimited is re-exported for the handlers)
 from .registry import TemplateSpec
@@ -73,9 +74,10 @@ class App:
             return "data:image/jpeg;base64," + base64.b64encode(raw).decode(), choice["wide"]
         urls = anime.get("tmdb_urls") or []
         if urls and choice["idx"] >= 0:
-            uri = await self.cache.tmdb_image(urls[choice["idx"] % len(urls)], hd=hd)
+            url = urls[choice["idx"] % len(urls)]
+            uri = await self.cache.tmdb_image(url, hd=hd)
             if uri:
-                return uri, True
+                return uri, url not in (anime.get("portrait_urls") or [])      # Jikan/Kitsu posters are portrait
         if choice["idx"] == -2 and anime.get("banner"):          # the person picked AniList's wide banner
             return anime["banner"], True
         return None, False
@@ -89,7 +91,8 @@ class App:
         if choice["path"]:
             return "your image", True, n
         if n and choice["idx"] >= 0:
-            return f"TMDB image {choice['idx'] % n + 1} of {n}", False, n
+            url = anime["tmdb_urls"][choice["idx"] % n]
+            return f"{artsources.source_name(url)} image {choice['idx'] % n + 1} of {n}", False, n
         if choice["idx"] == -2 and anime.get("banner"):
             return f"{src} {banner_word}", False, n
         return f"{src} {cover_word}", False, n
@@ -98,7 +101,8 @@ class App:
         """Two DIFFERENT pictures for the 'Next' cards of the special design: the TMDB backdrops after the chosen
         one, or (AniList chosen / no TMDB) AniList episode thumbnails, then its banner, then its cover."""
         idx = (await self.store.get_art(uid, anime["id"]))["idx"]
-        urls = anime.get("tmdb_urls") or []
+        portrait = anime.get("portrait_urls") or []
+        urls = [u for u in (anime.get("tmdb_urls") or []) if u not in portrait]     # the cards are wide: skip posters
         out: list[str] = []
         if urls and idx >= 0:
             n = len(urls)
@@ -122,6 +126,10 @@ class App:
             self.limiter.check(uid, cost)
         anime = await self.cache.get(media_id)
         style = await self.style_for(uid)
+        prefs = await self.store.get(uid)
+        anime = with_title_lang(anime, prefs.title_lang)
+        if prefs.title_logo == "off":
+            anime = {**anime, "title_logo": None}
         if not spec.special:
             art, wide = await self.art_for(uid, anime, hd=hd)
             anime = {**anime, "art": art or anime["cover"], "art_wide": wide}
@@ -130,14 +138,52 @@ class App:
             ch = await self.store.get_character(uid, media_id)
             if not ch:
                 raise NeedCharacter()
-            s = await self.store.get(uid)
+            s = prefs
             src = "data:image/png;base64," + base64.b64encode(Path(ch["path"]).read_bytes()).decode()
             style = replace(style, scheme=schemes.resolve(s.scheme, anime["accent"]),
                             char={"src": src, "dx": ch["dx"], "scale": ch["scale"]})
             anime = {**anime, "ttl": await self.store.get_title(uid, media_id),
                      "next_imgs": await self.next_images(uid, anime)}
-        return anime, await self.renderer.render(spec.file, anime, spec.variant, fmt=fmt, style=style,
-                                                 scale=2.0 if hd else scale)
+        data = await self.renderer.render(spec.file, anime, spec.variant, fmt=fmt, style=style,
+                                          scale=2.0 if hd else scale)
+        if scale >= 1.0:                       # previews for the design grid are marked once, on the finished grid
+            data = await self.mark(data, fmt)
+        return anime, data
+
+    async def mark(self, data: bytes, fmt: str) -> bytes:
+        """Apply the owner's watermark (WATERMARK_TEXT / WATERMARK_KEY) when one is configured."""
+        if not (self.cfg.watermark_text or self.cfg.watermark_key):
+            return data
+        try:
+            return await asyncio.to_thread(watermark.apply, data, fmt, self.cfg.watermark_text, self.cfg.watermark_key)
+        except Exception:
+            log.exception("watermark failed; sending the picture without it")
+            return data
+
+    # ------------------------------------------------------------------ fanart.tv characters (special design)
+    async def character_candidates(self, anime: dict) -> list[str]:
+        fanart = self.cache.fanart
+        if not (fanart and fanart.enabled):
+            return []
+        try:
+            return await fanart.character_urls(anime)
+        except Exception as e:
+            log.warning("fanart character lookup failed: %s", e)
+            return []
+
+    async def pick_character(self, uid: int, media_id: int, start: int = 0) -> int | None:
+        """Download the first usable transparent fanart.tv image from candidate `start` on (wrapping round), save it as
+        this person's character for this anime and return its index. None when there is nothing usable."""
+        anime = await self.cache.get(media_id)
+        urls = await self.character_candidates(anime)
+        for step in range(len(urls)):
+            i = (start + step) % len(urls)
+            raw = await self.cache.fanart.fetch(urls[i])
+            png = await asyncio.to_thread(prepare_character, raw) if raw else None
+            if png:
+                await self.store.save_character(uid, media_id, png, src_idx=i)
+                return i
+        return None
 
     async def preview_grid(self, uid: int, media_id: int) -> tuple[bytes, list[TemplateSpec]]:
         """One image with every design (the special one only if this person has a character for the anime)."""
@@ -152,7 +198,21 @@ class App:
         results = [r for r in await asyncio.gather(*(one(s) for s in self.templates)) if r]
         anime = await self.cache.get(media_id)
         grid = await asyncio.to_thread(compose_grid, [(s.label.replace("✨ ", ""), img) for s, img in results], anime["title"])
-        return grid, [s for s, _ in results]
+        return await self.mark(grid, "jpeg"), [s for s, _ in results]
+
+
+_TITLE_KEYS = {"english": "title_english", "romaji": "title_romaji", "native": "title_native"}
+
+
+def with_title_lang(anime: dict, lang: str | None) -> dict:
+    """Show the title in the person's chosen language. 'auto' (or a language this title doesn't have) keeps the default."""
+    key = _TITLE_KEYS.get(lang or "")
+    wanted = (anime.get(key) or "").strip() if key else ""
+    if not wanted or wanted == anime.get("title"):
+        return anime
+    a, b = split_title(wanted)
+    big, small = split_special(wanted)
+    return {**anime, "title": wanted, "title_a": a, "title_b": b, "title_big": big, "title_small": small}
 
 
 def apply_edits(anime: dict, edits: dict) -> dict:
@@ -169,6 +229,8 @@ def apply_edits(anime: dict, edits: dict) -> dict:
         out["season_line"] = edits["season_line"]
     if "episodes_label" in edits:
         out["episodes_label"] = edits["episodes_label"]
+    if "badges" in edits:
+        out["badges"] = [b.strip() for b in edits["badges"].split(",") if b.strip()][:4]
     return out
 
 

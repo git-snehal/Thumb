@@ -29,6 +29,7 @@ MEDIA_Q = """
 query ($id: Int) {
   Media(id: $id, type: ANIME) {
     id
+    idMal
     siteUrl
     title { romaji english native }
     description(asHtml: false)
@@ -240,6 +241,7 @@ class AniList:
         title_big, title_small = split_special(title)
         return {
             "id": m["id"],
+            "mal_id": m.get("idMal"),
             "season_line": season_line,
             "episodes_label": episodes_label,
             "title_english": m["title"].get("english"),

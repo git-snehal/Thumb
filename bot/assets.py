@@ -9,8 +9,9 @@ from collections import OrderedDict
 
 import httpx
 
-from . import schemes
+from . import artsources, schemes
 from .anilist import AniList, SourceError, readable_on, vivid
+from .fanart import prepare_logo
 from .ids import is_tmdb
 
 log = logging.getLogger(__name__)
@@ -36,7 +37,31 @@ def _shrink(raw: bytes, max_width: int) -> tuple[bytes, str] | None:
         return None
 
 
-async def _data_uri(client: httpx.AsyncClient, url: str | None, max_width: int | None = None) -> str | None:
+def upscale_small(raw: bytes, min_height: int = 1350, max_factor: float = 3.0) -> tuple[bytes, str] | None:
+    """Enlarge a small picture (e.g. an AniList cover) before it is embedded, so the 2x HD export isn't blocky.
+    LANCZOS plus a light unsharp mask. It can't invent detail, it only makes the enlargement cleaner than the
+    browser's own scaling. None when the picture is already big enough (or can't be read)."""
+    import io
+
+    from PIL import Image, ImageFilter
+
+    try:
+        img = Image.open(io.BytesIO(raw))
+        img.load()
+        if img.height >= min_height or img.height < 64:
+            return None
+        factor = min(max_factor, min_height / img.height)
+        img = img.convert("RGB").resize((round(img.width * factor), round(img.height * factor)), Image.LANCZOS)
+        img = img.filter(ImageFilter.UnsharpMask(radius=1.4, percent=55, threshold=3))
+        out = io.BytesIO()
+        img.save(out, "JPEG", quality=92, optimize=True)
+        return out.getvalue(), "image/jpeg"
+    except Exception:
+        return None
+
+
+async def _data_uri(client: httpx.AsyncClient, url: str | None, max_width: int | None = None,
+                    upscale: bool = False) -> str | None:
     if not url:
         return None
     try:
@@ -48,19 +73,22 @@ async def _data_uri(client: httpx.AsyncClient, url: str | None, max_width: int |
     if not mime.startswith("image/"):
         return None
     content = r.content
-    if max_width:
-        shrunk = await asyncio.to_thread(_shrink, content, max_width)
-        if shrunk:
-            content, mime = shrunk
+    shrunk = await asyncio.to_thread(_shrink, content, max_width) if max_width else None
+    if shrunk:
+        content, mime = shrunk
+    elif upscale:
+        bigger = await asyncio.to_thread(upscale_small, content)
+        if bigger:
+            content, mime = bigger
     return f"data:{mime};base64,{base64.b64encode(content).decode()}"
 
 
-async def inline_images(client: httpx.AsyncClient, anime: dict) -> dict:
+async def inline_images(client: httpx.AsyncClient, anime: dict, upscale: bool = True) -> dict:
     """Replace every *_url with an embedded data URI so rendering needs no network."""
     chars = anime["characters"]
     jobs = [
         _data_uri(client, anime["banner_url"]),
-        _data_uri(client, anime["cover_url"]),
+        _data_uri(client, anime["cover_url"], upscale=upscale),
         *[_data_uri(client, u) for u in anime["thumb_urls"]],
         *[_data_uri(client, c["image_url"]) for c in chars],
         *[_data_uri(client, c["va_image_url"]) for c in chars],
@@ -85,8 +113,10 @@ async def inline_images(client: httpx.AsyncClient, anime: dict) -> dict:
 class AnimeCache:
     """Small TTL + LRU cache of fully prepared anime dicts, keyed by AniList id."""
 
-    def __init__(self, anilist: AniList, http: httpx.AsyncClient, ttl: int, size: int = 64, tmdb=None):
+    def __init__(self, anilist: AniList, http: httpx.AsyncClient, ttl: int, size: int = 64, tmdb=None,
+                 fanart=None, extra_art: bool = True, upscale: bool = True, title_logos: bool = True):
         self.anilist, self.http, self.ttl, self.size, self.tmdb = anilist, http, ttl, size, tmdb
+        self.fanart, self.extra_art, self.upscale, self.title_logos = fanart, extra_art, upscale, title_logos
         self._imgs: OrderedDict[str, str] = OrderedDict()      # TMDB image path -> data URI
         self._hd: OrderedDict[str, str] = OrderedDict()        # the same, full-size (for the 2x export)
         self._data: OrderedDict[int, tuple[float, dict]] = OrderedDict()
@@ -123,10 +153,14 @@ class AnimeCache:
             raw = await self.tmdb.media(media_id)
         else:
             raw = await self.anilist.media(media_id)
-        prepared = await inline_images(self.http, raw)
+        prepared = await inline_images(self.http, raw, upscale=self.upscale)
         if prepared.get("needs_accent"):
             await self._accent_from_poster(prepared)
-        prepared["tmdb_urls"] = await self._tmdb_paths(prepared)
+        (paths, logos), extras = await asyncio.gather(self._tmdb_images(prepared), self._extra_art(prepared))
+        # "tmdb_urls" is the list of alternative pictures: TMDB backdrop paths, then full urls of portrait posters
+        prepared["tmdb_urls"] = [*paths, *extras]
+        prepared["portrait_urls"] = extras
+        prepared["title_logo"] = await self._title_logo(prepared, logos) if self.title_logos else None
         return prepared
 
     async def _accent_from_poster(self, anime: dict) -> None:
@@ -144,15 +178,53 @@ class AnimeCache:
             anime.update(accent=color, accent_fg=readable_on(color), accent_vivid=vivid(color),
                          accent_vivid_fg=readable_on(vivid(color)))
 
-    async def _tmdb_paths(self, anime: dict) -> list[str]:
-        """Backdrop paths from TMDB, or [] for any reason at all (no key, no match, network error)."""
+    async def _tmdb_images(self, anime: dict) -> tuple[list[str], list[str]]:
+        """(backdrop paths, logo paths) from TMDB, or ([], []) for any reason at all (no key, no match, network error)."""
         if not (self.tmdb and self.tmdb.enabled):
-            return []
+            return [], []
         try:
-            return await asyncio.wait_for(self.tmdb.backdrops(anime), 20)
+            return await asyncio.wait_for(self.tmdb.images(anime), 20)
         except Exception as e:           # TMDB is a bonus; it must never break a banner
             log.warning("TMDB lookup failed for %r: %s", anime.get("title"), e)
+            return [], []
+
+    async def _tmdb_paths(self, anime: dict) -> list[str]:
+        """Just the TMDB backdrop paths (kept for callers and tests that only want those)."""
+        return (await self._tmdb_images(anime))[0]
+
+    async def _extra_art(self, anime: dict) -> list[str]:
+        if not self.extra_art:
             return []
+        try:
+            return await asyncio.wait_for(artsources.extra_posters(self.http, anime), 15)
+        except Exception as e:
+            log.info("Extra art lookup failed for %r: %s", anime.get("title"), e)
+            return []
+
+    async def _title_logo(self, anime: dict, tmdb_logos: list[str]) -> str | None:
+        """The show's real title logo as a data URI (fanart.tv first, then TMDB), or None to use plain text."""
+        try:
+            return await asyncio.wait_for(self._title_logo_inner(anime, tmdb_logos), 25)
+        except Exception as e:
+            log.info("Title logo lookup failed for %r: %s", anime.get("title"), e)
+            return None
+
+    async def _title_logo_inner(self, anime: dict, tmdb_logos: list[str]) -> str | None:
+        urls: list[str] = []
+        if self.fanart and self.fanart.enabled:
+            urls += await self.fanart.logo_urls(anime)
+        if self.tmdb:
+            urls += [self.tmdb.image_url(p, "w500") for p in tmdb_logos[:2]]
+        for url in urls[:4]:
+            try:
+                r = await self.http.get(url, timeout=20, follow_redirects=True)
+                r.raise_for_status()
+            except httpx.HTTPError:
+                continue
+            png = await asyncio.to_thread(prepare_logo, r.content)
+            if png:
+                return "data:image/png;base64," + base64.b64encode(png).decode()
+        return None
 
     async def tmdb_image(self, path: str, hd: bool = False) -> str | None:
         """One TMDB backdrop as a data URI (cached). hd=True fetches TMDB's full-size file (limited to 2560px wide)."""
@@ -160,9 +232,15 @@ class AnimeCache:
         if path in cache:
             cache.move_to_end(path)
             return cache[path]
-        if not self.tmdb:
+        if not self.tmdb and not path.startswith("http"):
             return None
-        uri = await _data_uri(self.http, self.tmdb.image_url(path, "original" if hd else "w1280"), 2560 if hd else None)
+        if path.startswith("http"):                      # a portrait poster from Jikan / Kitsu: already a full url
+            url = path
+        else:
+            url = self.tmdb.image_url(path, "original" if hd else "w1280")
+        portrait = path.startswith("http")
+        uri = await _data_uri(self.http, url, 2560 if hd else (1600 if portrait else None),
+                              upscale=portrait and self.upscale)
         if uri:
             cache[path] = uri
             while len(cache) > (6 if hd else 40):

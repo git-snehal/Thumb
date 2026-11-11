@@ -131,13 +131,24 @@ def pos_text(kind: str, current: str) -> str:
     )
 
 
-def panel_kb(uid: int, mid: int, key: str, standalone: bool) -> InlineKeyboardMarkup:
+TITLE_LANGS = {"auto": "Auto", "english": "English", "romaji": "Romaji", "native": "Native"}
+
+
+def next_title_lang(cur: str | None) -> str:
+    order = list(TITLE_LANGS)
+    return order[(order.index(cur) + 1) % len(order)] if cur in TITLE_LANGS else "english"
+
+
+def panel_kb(uid: int, mid: int, key: str, standalone: bool, title_lang: str | None = None,
+             title_logo: str | None = None) -> InlineKeyboardMarkup:
     c = lambda a: _cb(uid, mid, key, a)
     last = btn("Close", c("close"), "close", "✖️") if standalone else btn("Back", c("back"), "back", "↩️")
     rows = [
         [btn("Brand text", c("txt"), "text", "✏️"), btn("Brand logo", c("logo"), "logo", "🖼")],
         [btn("Text position", c("pos"), "position", "📍"), btn("Logo position", c("lpos"), "position", "📍")],
         [btn("Font", c("font"), "font", "🔤"), btn("Remove brand", c("off"), "remove", "🗑", "danger")],
+        [btn(f"Title: {TITLE_LANGS.get(title_lang or 'auto', 'Auto')}", c("tlang"), None, "🌐"),
+         btn(f"Title logo: {'off' if title_logo == 'off' else 'on'}", c("tlogo"), None, "🏷")],
     ]
     if not standalone:                            # normal posters: main art. Special design: the Next-card pictures
         rows.append([btn("Next-card images" if key == "special" else "Background image", c("bg"), "background", "🌄"),
@@ -243,25 +254,31 @@ def colors_kb(uid: int, mid: int, key: str, current: str) -> InlineKeyboardMarku
     return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
-def char_text(ch: dict | None) -> str:
+def char_text(ch: dict | None, n_fanart: int = 0) -> str:
     size = f"{round((ch or {}).get('scale', 1.0) * 100)}%"
     shift = (ch or {}).get("dx", 0)
     where = "centered" if shift == 0 else (f"{abs(shift)}px right" if shift > 0 else f"{abs(shift)}px left")
+    idx = (ch or {}).get("src_idx")
+    source = (f"fanart.tv {idx + 1} of {n_fanart}" if idx is not None and n_fanart else "your upload")
     return (
         f"<b>🧍 {sc('special design — character')}</b>\n\n"
-        f"<blockquote>• <b>{sc('size')}:</b> {size}\n• <b>{sc('position')}:</b> {where}</blockquote>\n"
+        f"<blockquote>• <b>{sc('size')}:</b> {size}\n• <b>{sc('position')}:</b> {where}\n"
+        f"• <b>{sc('image')}:</b> {source}</blockquote>\n"
         f"<i>{sc('nudge the character, or replace it with another image.')}</i>"
     )
 
 
-def char_kb(uid: int, mid: int, key: str) -> InlineKeyboardMarkup:
+def char_kb(uid: int, mid: int, key: str, n_fanart: int = 0) -> InlineKeyboardMarkup:
     c = lambda a: _cb(uid, mid, key, a)
-    return InlineKeyboardMarkup(inline_keyboard=[
+    rows = [
         [btn("Smaller", c("cminus"), None, "➖"), btn("Bigger", c("cplus"), None, "➕")],
         [btn("Left", c("cleft"), None, "⬅️"), btn("Right", c("cright"), None, "➡️")],
-        [btn("Replace character", c("crep"), "character", "🔁")],
-        [btn("Back", c("back"), "back", "↩️")],
-    ])
+    ]
+    if n_fanart:
+        rows.append([btn(f"Next character ({n_fanart} found)", c("cnext"), None, "🔄")])
+    rows += [[btn("Upload my own" if n_fanart else "Replace character", c("crep"), "character", "🔁")],
+             [btn("Back", c("back"), "back", "↩️")]]
+    return InlineKeyboardMarkup(inline_keyboard=rows)
 
 
 # ---- special design: typed title ------------------------------------------
@@ -303,8 +320,16 @@ def title_kb(uid: int, mid: int, key: str, t: dict | None) -> InlineKeyboardMark
 
 
 # ---- editable text --------------------------------------------------------
-EDIT_LABELS = {"synopsis": "Synopsis", "genres": "Genres", "season_line": "Season line", "episodes_label": "Episode label"}
-EDIT_ACTIONS = {"edf_syn": "synopsis", "edf_gen": "genres", "edf_sea": "season_line", "edf_epi": "episodes_label"}
+EDIT_LABELS = {"synopsis": "Synopsis", "genres": "Genres", "season_line": "Season line", "episodes_label": "Episode label",
+               "badges": "Badges"}
+EDIT_ACTIONS = {"edf_syn": "synopsis", "edf_gen": "genres", "edf_sea": "season_line", "edf_epi": "episodes_label",
+                "edf_bdg": "badges"}
+BADGE_PRESETS = ("SUB", "DUB", "1080p", "4K", "HD", "Completed", "Ongoing", "New")
+MAX_BADGES = 4
+
+
+def badge_list(ed: dict) -> list[str]:
+    return [b.strip() for b in (ed.get("badges") or "").split(",") if b.strip()][:MAX_BADGES]
 
 
 def edit_text_view(ed: dict, anime: dict) -> str:
@@ -316,7 +341,8 @@ def edit_text_view(ed: dict, anime: dict) -> str:
     rows = [shown("synopsis", ed.get("synopsis", anime.get("description", ""))),
             shown("genres", ed.get("genres", ", ".join(anime.get("genres4") or anime.get("genres") or []))),
             shown("season_line", ed.get("season_line", anime.get("season_line", ""))),
-            shown("episodes_label", ed.get("episodes_label", anime.get("episodes_label", "")))]
+            shown("episodes_label", ed.get("episodes_label", anime.get("episodes_label", ""))),
+            shown("badges", ", ".join(badge_list(ed)))]
     return (f"<b>📝 {sc('edit text')}</b>\n\n<blockquote>" + "\n".join(rows) + "</blockquote>\n"
             f"<i>{sc('fix anything AniList got wrong (sequels often are). ✏️ = your edit. applies to every design.')}</i>")
 
@@ -325,6 +351,10 @@ def edit_kb(uid: int, mid: int, key: str, ed: dict) -> InlineKeyboardMarkup:
     c = lambda a: _cb(uid, mid, key, a)
     rows = [[btn("Synopsis", c("edf_syn"), None, "📝"), btn("Genres", c("edf_gen"), None, "🏷")],
             [btn("Season line", c("edf_sea"), None, "📅"), btn("Episode label", c("edf_epi"), None, "🎞")]]
+    on = {b.lower() for b in badge_list(ed)}
+    chips = [btn(f"{'✅ ' if b.lower() in on else ''}{b}", c(f"bdg_{i}"), None, None) for i, b in enumerate(BADGE_PRESETS)]
+    rows += [chips[i:i + 4] for i in range(0, len(chips), 4)]
+    rows.append([btn("Custom badges", c("edf_bdg"), None, "🏷")])
     if ed:
         rows.append([btn("Reset all text", c("edreset"), None, "♻️", "danger")])
     rows.append([btn("Back", c("menu"), "back", "↩️")])
