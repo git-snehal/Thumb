@@ -63,6 +63,20 @@ SPECIAL_BOXES_OPACITY = 1.0        # the five side boxes: 1 = pure white, lower 
 # Access Token"). Leave "" to use AniList art only. Customers can also upload their own image per anime.
 TMDB_API_KEY = ""
 
+# Optional: fanart.tv. Gives the Special Design a transparent character automatically (with a "Next character"
+# button) and real title logos for the designs that support them. Free personal key: fanart.tv -> sign up -> your
+# profile -> API key. Works best together with TMDB_API_KEY. Leave "" to keep uploading characters by hand.
+FANART_API_KEY = ""
+
+# Optional switches (all on by default). Set to False to turn a feature off.
+EXTRA_ART_SOURCES = True    # more poster choices in "Next image" from Jikan (MyAnimeList) and Kitsu, no key needed
+UPSCALE_SMALL_ART = True    # clean enlargement of small covers so the 2x HD file isn't blocky
+TITLE_LOGOS = True          # use the show's real title logo (fanart.tv / TMDB) on Posters 9 and 10 when one exists
+
+# Optional owner watermark on every image the bot sends. Both are off while empty.
+WATERMARK_TEXT = ""         # faint diagonal text across the picture, e.g. "@MyAnimeHub"
+WATERMARK_KEY = ""          # any secret phrase: adds an INVISIBLE mark you can check with  python -m bot.watermark verify
+
 # Who may use the bot: Telegram user IDs separated by commas. Empty = anyone. ADMIN_IDS are always allowed
 # and never rate-limited. (Find an ID with @userinfobot.)
 ALLOWED_USER_IDS = ""
