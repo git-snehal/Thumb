@@ -156,10 +156,13 @@ class AnimeCache:
         prepared = await inline_images(self.http, raw, upscale=self.upscale)
         if prepared.get("needs_accent"):
             await self._accent_from_poster(prepared)
-        (paths, logos), extras = await asyncio.gather(self._tmdb_images(prepared), self._extra_art(prepared))
-        # "tmdb_urls" is the list of alternative pictures: TMDB backdrop paths, then full urls of portrait posters
-        prepared["tmdb_urls"] = [*paths, *extras]
-        prepared["portrait_urls"] = extras
+        (paths, logos), extras, (fan_bg, fan_posters) = await asyncio.gather(
+            self._tmdb_images(prepared), self._extra_art(prepared), self._fanart_art(prepared))
+        # "tmdb_urls" is the list of alternative pictures: wide ones first (TMDB backdrops, fanart.tv backgrounds), then
+        # the portrait posters (fanart.tv, Jikan, Kitsu), which are full urls and listed in "portrait_urls"
+        portraits = list(dict.fromkeys([*fan_posters, *extras]))
+        prepared["tmdb_urls"] = [*paths, *fan_bg, *portraits]
+        prepared["portrait_urls"] = portraits
         prepared["title_logo"] = await self._title_logo(prepared, logos) if self.title_logos else None
         return prepared
 
@@ -191,6 +194,16 @@ class AnimeCache:
     async def _tmdb_paths(self, anime: dict) -> list[str]:
         """Just the TMDB backdrop paths (kept for callers and tests that only want those)."""
         return (await self._tmdb_images(anime))[0]
+
+    async def _fanart_art(self, anime: dict) -> tuple[list[str], list[str]]:
+        """(wide backgrounds, portrait posters) from fanart.tv, or ([], []) when off / nothing found / any error."""
+        if not (self.fanart and self.fanart.enabled):
+            return [], []
+        try:
+            return await asyncio.wait_for(self.fanart.art_urls(anime), 20)
+        except Exception as e:
+            log.info("fanart.tv art lookup failed for %r: %s", anime.get("title"), e)
+            return [], []
 
     async def _extra_art(self, anime: dict) -> list[str]:
         if not self.extra_art:
@@ -226,7 +239,7 @@ class AnimeCache:
                 return "data:image/png;base64," + base64.b64encode(png).decode()
         return None
 
-    async def tmdb_image(self, path: str, hd: bool = False) -> str | None:
+    async def tmdb_image(self, path: str, hd: bool = False, portrait: bool = False) -> str | None:
         """One TMDB backdrop as a data URI (cached). hd=True fetches TMDB's full-size file (limited to 2560px wide)."""
         cache = self._hd if hd else self._imgs
         if path in cache:
@@ -238,8 +251,8 @@ class AnimeCache:
             url = path
         else:
             url = self.tmdb.image_url(path, "original" if hd else "w1280")
-        portrait = path.startswith("http")
-        uri = await _data_uri(self.http, url, 2560 if hd else (1600 if portrait else None),
+        full_url = path.startswith("http")             # not a TMDB path: cap the size we embed
+        uri = await _data_uri(self.http, url, 2560 if hd else (1600 if full_url else None),
                               upscale=portrait and self.upscale)
         if uri:
             cache[path] = uri

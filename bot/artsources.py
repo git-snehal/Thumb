@@ -86,4 +86,6 @@ def source_name(url: str) -> str:
         return "MyAnimeList"
     if "kitsu" in url:
         return "Kitsu"
+    if "fanart.tv" in url:
+        return "fanart.tv"
     return "TMDB"

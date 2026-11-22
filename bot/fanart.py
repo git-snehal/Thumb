@@ -31,6 +31,12 @@ SHOW_CHARACTERS = ("characterart", "hdclearart", "clearart")
 SHOW_LOGOS = ("hdtvlogo", "clearlogo")
 MOVIE_CHARACTERS = ("hdmovieclearart", "movieart")
 MOVIE_LOGOS = ("hdmovielogo", "movielogo")
+# Normal artwork. Backgrounds are 1920x1080 wide pictures: perfect as the main art. (tvbanner is a 1000x185 strip and
+# tvthumb is only 500x281, too small/thin to use as the main picture, so they are left out on purpose.)
+SHOW_BACKGROUNDS = ("showbackground",)
+MOVIE_BACKGROUNDS = ("moviebackground",)
+SHOW_POSTERS = ("tvposter",)
+MOVIE_POSTERS = ("movieposter",)
 
 
 def pick_urls(record: dict, kinds: tuple[str, ...], prefer_lang: tuple[str, ...] = ("en", "ja", "", "00")) -> list[str]:
@@ -239,6 +245,10 @@ class Fanart:
             if raw and prepare_character(raw):
                 usable += 1
         lines.append(f"Transparent and usable (first {min(3, len(chars))} checked): {usable}")
+        bgs = MOVIE_BACKGROUNDS if kind == "movies" else SHOW_BACKGROUNDS
+        pos = MOVIE_POSTERS if kind == "movies" else SHOW_POSTERS
+        lines.append("Wide backgrounds listed: " + ", ".join(f"{k} {len(rec.get(k) or [])}" for k in bgs)
+                     + " · posters: " + ", ".join(f"{k} {len(rec.get(k) or [])}" for k in pos))
         logos = pick_urls(rec, MOVIE_LOGOS if kind == "movies" else SHOW_LOGOS)
         lines.append("Title logos listed: " + (", ".join(f"{k} {len(rec.get(k) or [])}"
                                                          for k in (MOVIE_LOGOS if kind == 'movies' else SHOW_LOGOS)) or "none")
@@ -249,6 +259,14 @@ class Fanart:
         kind, rec = await self.record(anime)
         kinds = MOVIE_CHARACTERS if kind == "movies" else SHOW_CHARACTERS
         return pick_urls(rec, kinds, prefer_lang=("", "00", "en", "ja"))[:limit]
+
+    async def art_urls(self, anime: dict, backgrounds: int = 8, posters: int = 4) -> tuple[list[str], list[str]]:
+        """(wide 1920x1080 backgrounds, portrait posters) from fanart.tv, best first. ([], []) when it has none."""
+        kind, rec = await self.record(anime)
+        movie = kind == "movies"
+        bg = pick_urls(rec, MOVIE_BACKGROUNDS if movie else SHOW_BACKGROUNDS, prefer_lang=("", "00", "en", "ja"))
+        po = pick_urls(rec, MOVIE_POSTERS if movie else SHOW_POSTERS)
+        return bg[:backgrounds], po[:posters]
 
     async def logo_urls(self, anime: dict) -> list[str]:
         kind, rec = await self.record(anime)

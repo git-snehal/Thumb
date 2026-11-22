@@ -67,6 +67,18 @@ def test_pick_urls_language_then_likes():
     assert fanart.pick_urls(rec, fanart.SHOW_LOGOS) == ["en_hi", "en_low", "ja1"]
 
 
+def test_art_urls_split_wide_backgrounds_from_posters():
+    rec = {"showbackground": [{"url": "bg_low", "likes": "1"}, {"url": "bg_hi", "likes": "8"}],
+           "tvposter": [{"url": "p_ja", "lang": "ja"}, {"url": "p_en", "lang": "en"}],
+           "tvbanner": [{"url": "strip"}], "tvthumb": [{"url": "thumb"}], "_kind": "tv"}
+    f = fanart.Fanart(httpx.AsyncClient(), "KEY", None, Path("."))
+    f._records[5] = (__import__("time").time(), rec, 3600)
+    bg, posters = run(f.art_urls({"id": 5}))
+    assert bg == ["bg_hi", "bg_low"] and posters == ["p_en", "p_ja"]          # the thin banner strip / small thumb are not used
+    off = fanart.Fanart(httpx.AsyncClient(), "", None, Path("."))
+    assert run(off.art_urls({"id": 5})) == ([], [])
+
+
 def test_prepare_character_rules():
     assert fanart.prepare_character(png(600, 800)) is None                       # opaque image: not a cut-out
     assert fanart.prepare_character(b"not an image") is None

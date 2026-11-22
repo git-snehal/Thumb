@@ -85,9 +85,9 @@ async def main() -> None:
     except Exception as e:      # network hiccup at boot: keep going, polling retries by itself
         me = None
         logging.warning("Couldn't reach Telegram yet (%s). Will keep retrying.", e)
-    logging.info("Anime Thumb Bot v%s as @%s | TMDB art: %s | fanart.tv: %s | AI cutout: %s | allow-list: %s | rate limit: %s/min | data: %s",
+    logging.info("Anime Thumb Bot v%s as @%s | TMDB art: %s | fanart.tv: %s | AI cutout: %s | special defaults: %s | allow-list: %s | rate limit: %s/min | data: %s",
                  VERSION, me.username if me else "?", "on" if tmdb.enabled else "off", "on" if fanart.enabled else "off",
-                 "on" if cfg.auto_cutout else "off",
+                 "on" if cfg.auto_cutout else "off", "on" if cfg.special_defaults else "OFF (no OD3N watermark/credit)",
                  f"{len(cfg.allowed_users)} users" if cfg.allowed_users else "open", cfg.rate_limit or "unlimited", cfg.data_dir)
 
     commands = ([

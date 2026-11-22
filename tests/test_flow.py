@@ -116,7 +116,9 @@ def fake_web(request: httpx.Request) -> httpx.Response:
         if request.url.path == "/v3/tv/4242":
             return httpx.Response(200, json={
                 "characterart": [{"url": f"https://assets.fanart.tv/c{i}.png", "likes": str(9 - i)} for i in (1, 2, 3)],
-                "hdtvlogo": [{"url": "https://assets.fanart.tv/logo.png", "lang": "en", "likes": "5"}]})
+                "hdtvlogo": [{"url": "https://assets.fanart.tv/logo.png", "lang": "en", "likes": "5"}],
+                "showbackground": [{"url": f"https://assets.fanart.tv/bg{i}.jpg", "likes": str(9 - i)} for i in (1, 2)],
+                "tvposter": [{"url": "https://assets.fanart.tv/poster1.jpg", "lang": "en", "likes": "4"}]})
         return httpx.Response(404, json={})
     if request.url.host == "assets.fanart.tv":
         if request.url.path == "/c2.png":                        # an opaque picture: not usable as a cut-out
@@ -827,8 +829,15 @@ async def main():
 
     anime = await app.cache.get(163134)
     assert anime["title_logo"] and anime["title_logo"].startswith("data:image/png"), "fanart.tv logo is fetched and embedded"
-    assert anime["tmdb_urls"][-1] == "https://cdn.myanimelist.net/images/anime/1/a.jpg", anime["tmdb_urls"]
-    assert anime["portrait_urls"] == [anime["tmdb_urls"][-1]], "Jikan pictures are marked portrait"
+    urls = anime["tmdb_urls"]
+    assert urls[-1] == "https://cdn.myanimelist.net/images/anime/1/a.jpg", urls
+    assert [u for u in urls if "showbackground" in u or "/bg" in u] == ["https://assets.fanart.tv/bg1.jpg", "https://assets.fanart.tv/bg2.jpg"], urls
+    assert anime["portrait_urls"] == ["https://assets.fanart.tv/poster1.jpg", "https://cdn.myanimelist.net/images/anime/1/a.jpg"]
+    assert urls.index("https://assets.fanart.tv/bg2.jpg") < urls.index("https://assets.fanart.tv/poster1.jpg"), "wide art first, posters last"
+    await app.store.set_art_idx(77, 163134, urls.index("https://assets.fanart.tv/bg1.jpg"))
+    art, wide = await app.art_for(77, anime)
+    assert art and wide, "a fanart.tv background is used as WIDE art"
+    assert (await app.art_label(77, anime))[0].startswith("fanart.tv image"), await app.art_label(77, anime)
     await app.store.set_art_idx(77, 163134, len(anime["tmdb_urls"]) - 1)
     art, wide = await app.art_for(77, anime)
     assert art and not wide, "a portrait poster is not used as a wide backdrop"

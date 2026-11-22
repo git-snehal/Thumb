@@ -75,9 +75,10 @@ class App:
         urls = anime.get("tmdb_urls") or []
         if urls and choice["idx"] >= 0:
             url = urls[choice["idx"] % len(urls)]
-            uri = await self.cache.tmdb_image(url, hd=hd)
+            is_portrait = url in (anime.get("portrait_urls") or [])
+            uri = await self.cache.tmdb_image(url, hd=hd, portrait=is_portrait)
             if uri:
-                return uri, url not in (anime.get("portrait_urls") or [])      # Jikan/Kitsu posters are portrait
+                return uri, not is_portrait                                     # posters are portrait, backdrops wide
         if choice["idx"] == -2 and anime.get("banner"):          # the person picked AniList's wide banner
             return anime["banner"], True
         return None, False
